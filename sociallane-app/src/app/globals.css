@@ -1,0 +1,82 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+@layer base {
+     :root {
+        --background: #0F1115;
+        --card-background: rgba(26, 29, 35, 0.7);
+        --text-primary: #FFFFFF;
+        --text-secondary: #A1A1AA;
+        --accent-purple: #8B5CF6;
+        --accent-yellow: #F59E0B;
+        --accent-blue: #3B82F6;
+        --success-green: #10B981;
+        --border-color: rgba(45, 55, 72, 0.5);
+    }
+    body {
+        background-color: var(--background);
+        color: var(--text-primary);
+    }
+}
+
+@layer components {
+    .card {
+        background-color: var(--card-background);
+        border-radius: 1rem;
+        border: 1px solid var(--border-color);
+        backdrop-filter: blur(12px);
+        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.18);
+    }
+    .nav-item {
+        @apply px-4 py-2 rounded-full transition-colors;
+        background: rgba(255, 255, 255, 0.05);
+        backdrop-filter: blur(8px);
+    }
+    .nav-item.active {
+        @apply bg-white text-black;
+        background: rgba(255, 255, 255, 0.9);
+    }
+    .nav-item:not(.active) {
+        @apply text-gray-400;
+    }
+    .nav-item:not(.active):hover {
+        @apply text-white;
+        background: rgba(255, 255, 255, 0.1);
+    }
+    .glass-input {
+        @apply bg-transparent border border-gray-700/50 rounded-lg transition-colors outline-none;
+        backdrop-filter: blur(4px);
+    }
+    .glass-input:focus {
+        @apply border-purple-500/70 ring-1 ring-purple-500/50;
+    }
+    .glass-button {
+        @apply transition-all duration-200 rounded-lg text-white;
+        background: rgba(139, 92, 246, 0.2);
+        backdrop-filter: blur(8px);
+        border: 1px solid rgba(139, 92, 246, 0.3);
+    }
+    .glass-button:hover {
+        background: rgba(139, 92, 246, 0.3);
+        border-color: rgba(139, 92, 246, 0.5);
+    }
+    .stat-value {
+        @apply text-4xl font-bold;
+    }
+    .stat-label {
+        @apply text-sm text-gray-400;
+    }
+    .trend-up {
+        @apply text-emerald-400;
+    }
+    .trend-down {
+        @apply text-red-400;
+    }
+}
+
+@media (prefers-color-scheme: dark) {
+     :root {
+        --background: #0a0a0a;
+        --foreground: #ededed;
+    }
+}
