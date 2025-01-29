@@ -52,6 +52,18 @@ export type Subscription = {
   comments: string | null;
   comment_updated_at: string | null;
   comment_updated_by: string | null;
+  hosting_details: {
+    host: string;
+    username: string;
+    password: string;
+    port: string;
+  } | null;
+  database_details: {
+    host: string;
+    databaseName: string;
+    databaseUser: string;
+    password: string;
+  } | null;
 };
 
 export type UserProfile = {

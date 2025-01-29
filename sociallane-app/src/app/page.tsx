@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { UserProfile, getUserProfile, updateUserProfile, uploadAvatar } from '@/utils/supabase';
 import { User } from '@supabase/supabase-js';
 import { HostingDetails, DatabaseDetails } from "@/types/hosting";
+import { UpdateDistributionChart } from '@/components/analytics/UpdateDistributionChart';
 
 type SortField = 'client_name' | 'frequency' | 'wp_theme' | 'php_version' | 'ga4_status';
 type SortDirection = 'asc' | 'desc';
@@ -52,17 +53,17 @@ export default function Home() {
   // Add new state for hosting and database details
   const [activeTab, setActiveTab] = useState("general");
   const [hostingDetails, setHostingDetails] = useState<HostingDetails>({
-    host: editingSubscription?.hosting_details?.host || "",
-    username: editingSubscription?.hosting_details?.username || "",
-    password: editingSubscription?.hosting_details?.password || "",
-    port: editingSubscription?.hosting_details?.port || "",
+    host: editingSubscription?.hosting_details?.host ?? "",
+    username: editingSubscription?.hosting_details?.username ?? "",
+    password: editingSubscription?.hosting_details?.password ?? "",
+    port: editingSubscription?.hosting_details?.port ?? "",
   });
 
   const [databaseDetails, setDatabaseDetails] = useState<DatabaseDetails>({
-    host: editingSubscription?.database_details?.host || "",
-    databaseName: editingSubscription?.database_details?.databaseName || "",
-    databaseUser: editingSubscription?.database_details?.databaseUser || "",
-    password: editingSubscription?.database_details?.password || "",
+    host: editingSubscription?.database_details?.host ?? "",
+    databaseName: editingSubscription?.database_details?.databaseName ?? "",
+    databaseUser: editingSubscription?.database_details?.databaseUser ?? "",
+    password: editingSubscription?.database_details?.password ?? "",
   });
 
   useEffect(() => {
@@ -238,6 +239,13 @@ export default function Home() {
     const pendingUpdates = subscriptions.filter(s => s.update_status === 'pending').length;
     const overdueUpdates = subscriptions.filter(s => s.update_status === 'overdue').length;
 
+    // Create a mapping of user profiles
+    const userProfilesMap = {
+      [user?.id || '']: {
+        display_name: userProfile?.display_name || 'Current User'
+      }
+    };
+
     return (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Update Statistics Card */}
@@ -263,8 +271,17 @@ export default function Home() {
           </div>
         </div>
 
+        {/* Update Distribution Chart */}
+        <div className="card p-6">
+          <h2 className="text-lg font-semibold mb-6">Update Distribution by Team Member</h2>
+          <UpdateDistributionChart 
+            subscriptions={subscriptions} 
+            userProfiles={userProfilesMap}
+          />
+        </div>
+
         {/* Update Timeline */}
-        <div className="card p-6 lg:col-span-2">
+        <div className="card p-6">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-lg font-semibold">Update Timeline</h2>
             <div className="flex gap-2">

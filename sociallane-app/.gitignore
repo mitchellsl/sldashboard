@@ -1,0 +1,11 @@
+# ... existing entries ...
+
+# Production files
+.env.production
+.next
+out
+build
+dist
+
+# PM2 files
+.pm2 
