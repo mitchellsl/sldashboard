@@ -5,6 +5,7 @@ import { Subscription, getSubscriptions, updateSubscription, deleteSubscription 
 import { useAuth } from '@/contexts/AuthContext';
 import { UserProfile, getUserProfile, updateUserProfile, uploadAvatar } from '@/utils/supabase';
 import { User } from '@supabase/supabase-js';
+import { HostingDetails, DatabaseDetails } from "@/types/hosting";
 
 type SortField = 'client_name' | 'frequency' | 'wp_theme' | 'php_version' | 'ga4_status';
 type SortDirection = 'asc' | 'desc';
@@ -47,6 +48,22 @@ export default function Home() {
   // Add new state for table collapse
   const [isMonthlyCollapsed, setIsMonthlyCollapsed] = useState(false);
   const [isQuarterlyCollapsed, setIsQuarterlyCollapsed] = useState(false);
+
+  // Add new state for hosting and database details
+  const [activeTab, setActiveTab] = useState("general");
+  const [hostingDetails, setHostingDetails] = useState<HostingDetails>({
+    host: editingSubscription?.hosting_details?.host || "",
+    username: editingSubscription?.hosting_details?.username || "",
+    password: editingSubscription?.hosting_details?.password || "",
+    port: editingSubscription?.hosting_details?.port || "",
+  });
+
+  const [databaseDetails, setDatabaseDetails] = useState<DatabaseDetails>({
+    host: editingSubscription?.database_details?.host || "",
+    databaseName: editingSubscription?.database_details?.databaseName || "",
+    databaseUser: editingSubscription?.database_details?.databaseUser || "",
+    password: editingSubscription?.database_details?.password || "",
+  });
 
   useEffect(() => {
     fetchSubscriptions();
@@ -800,155 +817,275 @@ export default function Home() {
                 ✕
               </button>
             </div>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">Klantnaam</label>
-                <input
-                  type="text"
-                  value={editingSubscription.client_name}
-                  onChange={(e) => setEditingSubscription({
-                    ...editingSubscription,
-                    client_name: e.target.value
-                  })}
-                  className="glass-input w-full px-4 py-2 rounded-lg"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">Frequentie</label>
-                <select
-                  value={editingSubscription.frequency}
-                  onChange={(e) => setEditingSubscription({
-                    ...editingSubscription,
-                    frequency: e.target.value as 'monthly' | 'quarterly'
-                  })}
-                  className="glass-input w-full px-4 py-2 rounded-lg"
-                >
-                  <option value="monthly">Maandelijks</option>
-                  <option value="quarterly">Per kwartaal</option>
-                </select>
-              </div>
-              
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">WordPress Thema</label>
-                <input
-                  type="text"
-                  value={editingSubscription.wp_theme || ''}
-                  onChange={(e) => setEditingSubscription({
-                    ...editingSubscription,
-                    wp_theme: e.target.value
-                  })}
-                  className="glass-input w-full px-4 py-2 rounded-lg"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">PHP Versie</label>
-                <input
-                  type="text"
-                  value={editingSubscription.php_version || ''}
-                  onChange={(e) => setEditingSubscription({
-                    ...editingSubscription,
-                    php_version: e.target.value
-                  })}
-                  className="glass-input w-full px-4 py-2 rounded-lg"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">GA4 Status</label>
-                <select
-                  value={editingSubscription.ga4_status}
-                  onChange={(e) => setEditingSubscription({
-                    ...editingSubscription,
-                    ga4_status: e.target.value as 'yes' | 'no' | 'pending'
-                  })}
-                  className="glass-input w-full px-4 py-2 rounded-lg"
-                >
-                  <option value="yes">Ja</option>
-                  <option value="pending">In behandeling</option>
-                  <option value="no">Nee</option>
-                </select>
-              </div>
-              
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">Analytics Check</label>
-                <select
-                  value={editingSubscription.analytics_check ? 'true' : 'false'}
-                  onChange={(e) => setEditingSubscription({
-                    ...editingSubscription,
-                    analytics_check: e.target.value === 'true'
-                  })}
-                  className="glass-input w-full px-4 py-2 rounded-lg"
-                >
-                  <option value="true">Ja</option>
-                  <option value="false">Nee</option>
-                </select>
-              </div>
 
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">Laatste Update</label>
-                <input
-                  type="date"
-                  value={editingSubscription.last_update ? new Date(editingSubscription.last_update).toISOString().split('T')[0] : ''}
-                  onChange={(e) => setEditingSubscription({
-                    ...editingSubscription,
-                    last_update: e.target.value ? new Date(e.target.value).toISOString() : null,
-                    next_update_due: e.target.value ? 
-                      calculateNextUpdate({...editingSubscription, last_update: e.target.value}).toISOString() : null
-                  })}
-                  className="glass-input w-full px-4 py-2 rounded-lg"
-                />
-              </div>
+            <div className="flex space-x-4 mb-4 border-b border-gray-600">
+              <button
+                type="button"
+                className={`px-4 py-2 ${
+                  activeTab === "general" 
+                    ? "border-b-2 border-blue-500 text-blue-500" 
+                    : "text-gray-400"
+                }`}
+                onClick={() => setActiveTab("general")}
+              >
+                General
+              </button>
+              <button
+                type="button"
+                className={`px-4 py-2 ${
+                  activeTab === "hosting" 
+                    ? "border-b-2 border-blue-500 text-blue-500" 
+                    : "text-gray-400"
+                }`}
+                onClick={() => setActiveTab("hosting")}
+              >
+                Hosting Gegevens
+              </button>
+              <button
+                type="button"
+                className={`px-4 py-2 ${
+                  activeTab === "database" 
+                    ? "border-b-2 border-blue-500 text-blue-500" 
+                    : "text-gray-400"
+                }`}
+                onClick={() => setActiveTab("database")}
+              >
+                Database
+              </button>
+            </div>
 
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">Volgende Update</label>
-                <input
-                  type="date"
-                  value={editingSubscription.next_update_due ? new Date(editingSubscription.next_update_due).toISOString().split('T')[0] : ''}
-                  disabled
-                  className="glass-input w-full px-4 py-2 rounded-lg opacity-50"
-                />
-              </div>
-
-              {/* Comments Section */}
-              <div className="col-span-2 mt-4">
-                <label className="block text-sm text-gray-400 mb-1">Opmerkingen</label>
-                <div className="space-y-2">
-                  <textarea
-                    value={editingSubscription.comments || ''}
+            {activeTab === "general" && (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Klantnaam</label>
+                  <input
+                    type="text"
+                    value={editingSubscription.client_name}
                     onChange={(e) => setEditingSubscription({
                       ...editingSubscription,
-                      comments: e.target.value
+                      client_name: e.target.value
                     })}
-                    className="glass-input w-full px-4 py-2 rounded-lg min-h-[100px] resize-y"
-                    placeholder="Voeg hier je opmerkingen toe..."
+                    className="glass-input w-full px-4 py-2 rounded-lg"
                   />
-                  {editingSubscription.comment_updated_by && editingSubscription.comment_updated_at && (
-                    <p className="text-sm text-gray-400">
-                      Laatste opmerking door {editingSubscription.comment_updated_by === user?.id ? 'jou' : 'een andere gebruiker'} op {formatDate(editingSubscription.comment_updated_at)}
-                    </p>
-                  )}
+                </div>
+                
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Frequentie</label>
+                  <select
+                    value={editingSubscription.frequency}
+                    onChange={(e) => setEditingSubscription({
+                      ...editingSubscription,
+                      frequency: e.target.value as 'monthly' | 'quarterly'
+                    })}
+                    className="glass-input w-full px-4 py-2 rounded-lg"
+                  >
+                    <option value="monthly">Maandelijks</option>
+                    <option value="quarterly">Per kwartaal</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">WordPress Thema</label>
+                  <input
+                    type="text"
+                    value={editingSubscription.wp_theme || ''}
+                    onChange={(e) => setEditingSubscription({
+                      ...editingSubscription,
+                      wp_theme: e.target.value
+                    })}
+                    className="glass-input w-full px-4 py-2 rounded-lg"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">PHP Versie</label>
+                  <input
+                    type="text"
+                    value={editingSubscription.php_version || ''}
+                    onChange={(e) => setEditingSubscription({
+                      ...editingSubscription,
+                      php_version: e.target.value
+                    })}
+                    className="glass-input w-full px-4 py-2 rounded-lg"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">GA4 Status</label>
+                  <select
+                    value={editingSubscription.ga4_status}
+                    onChange={(e) => setEditingSubscription({
+                      ...editingSubscription,
+                      ga4_status: e.target.value as 'yes' | 'no' | 'pending'
+                    })}
+                    className="glass-input w-full px-4 py-2 rounded-lg"
+                  >
+                    <option value="yes">Ja</option>
+                    <option value="pending">In behandeling</option>
+                    <option value="no">Nee</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Analytics Check</label>
+                  <select
+                    value={editingSubscription.analytics_check ? 'true' : 'false'}
+                    onChange={(e) => setEditingSubscription({
+                      ...editingSubscription,
+                      analytics_check: e.target.value === 'true'
+                    })}
+                    className="glass-input w-full px-4 py-2 rounded-lg"
+                  >
+                    <option value="true">Ja</option>
+                    <option value="false">Nee</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Laatste Update</label>
+                  <input
+                    type="date"
+                    value={editingSubscription.last_update ? new Date(editingSubscription.last_update).toISOString().split('T')[0] : ''}
+                    onChange={(e) => setEditingSubscription({
+                      ...editingSubscription,
+                      last_update: e.target.value ? new Date(e.target.value).toISOString() : null,
+                      next_update_due: e.target.value ? 
+                        calculateNextUpdate({...editingSubscription, last_update: e.target.value}).toISOString() : null
+                    })}
+                    className="glass-input w-full px-4 py-2 rounded-lg"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Volgende Update</label>
+                  <input
+                    type="date"
+                    value={editingSubscription.next_update_due ? new Date(editingSubscription.next_update_due).toISOString().split('T')[0] : ''}
+                    disabled
+                    className="glass-input w-full px-4 py-2 rounded-lg opacity-50"
+                  />
+                </div>
+
+                {/* Comments Section */}
+                <div className="col-span-2 mt-4">
+                  <label className="block text-sm text-gray-400 mb-1">Opmerkingen</label>
+                  <div className="space-y-2">
+                    <textarea
+                      value={editingSubscription.comments || ''}
+                      onChange={(e) => setEditingSubscription({
+                        ...editingSubscription,
+                        comments: e.target.value
+                      })}
+                      className="glass-input w-full px-4 py-2 rounded-lg min-h-[100px] resize-y"
+                      placeholder="Voeg hier je opmerkingen toe..."
+                    />
+                    {editingSubscription.comment_updated_by && editingSubscription.comment_updated_at && (
+                      <p className="text-sm text-gray-400">
+                        Laatste opmerking door {editingSubscription.comment_updated_by === user?.id ? 'jou' : 'een andere gebruiker'} op {formatDate(editingSubscription.comment_updated_at)}
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
+            )}
 
-              {/* Buttons */}
-              <div className="col-span-2 flex justify-end gap-4 mt-6">
-                <button
-                  onClick={() => setIsEditModalOpen(false)}
-                  className="glass-button px-4 py-2 rounded-lg"
-                >
-                  Annuleren
-                </button>
-                <button
-                  onClick={handleSave}
-                  disabled={loading}
-                  className="glass-button px-4 py-2 rounded-lg disabled:opacity-50"
-                >
-                  Wijzigingen Opslaan
-                </button>
+            {activeTab === "hosting" && (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Host</label>
+                  <input
+                    type="text"
+                    value={hostingDetails.host}
+                    onChange={(e) => setHostingDetails(prev => ({ ...prev, host: e.target.value }))}
+                    className="glass-input w-full px-4 py-2 rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Gebruikersnaam</label>
+                  <input
+                    type="text"
+                    value={hostingDetails.username}
+                    onChange={(e) => setHostingDetails(prev => ({ ...prev, username: e.target.value }))}
+                    className="glass-input w-full px-4 py-2 rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Wachtwoord</label>
+                  <input
+                    type="password"
+                    value={hostingDetails.password}
+                    onChange={(e) => setHostingDetails(prev => ({ ...prev, password: e.target.value }))}
+                    className="glass-input w-full px-4 py-2 rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Poort</label>
+                  <input
+                    type="text"
+                    value={hostingDetails.port}
+                    onChange={(e) => setHostingDetails(prev => ({ ...prev, port: e.target.value }))}
+                    className="glass-input w-full px-4 py-2 rounded-lg"
+                  />
+                </div>
               </div>
+            )}
+
+            {activeTab === "database" && (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Host</label>
+                  <input
+                    type="text"
+                    value={databaseDetails.host}
+                    onChange={(e) => setDatabaseDetails(prev => ({ ...prev, host: e.target.value }))}
+                    className="glass-input w-full px-4 py-2 rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Database Name</label>
+                  <input
+                    type="text"
+                    value={databaseDetails.databaseName}
+                    onChange={(e) => setDatabaseDetails(prev => ({ ...prev, databaseName: e.target.value }))}
+                    className="glass-input w-full px-4 py-2 rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Database User</label>
+                  <input
+                    type="text"
+                    value={databaseDetails.databaseUser}
+                    onChange={(e) => setDatabaseDetails(prev => ({ ...prev, databaseUser: e.target.value }))}
+                    className="glass-input w-full px-4 py-2 rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Password</label>
+                  <input
+                    type="password"
+                    value={databaseDetails.password}
+                    onChange={(e) => setDatabaseDetails(prev => ({ ...prev, password: e.target.value }))}
+                    className="glass-input w-full px-4 py-2 rounded-lg"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Buttons */}
+            <div className="flex justify-end gap-4 mt-6">
+              <button
+                onClick={() => setIsEditModalOpen(false)}
+                className="glass-button px-4 py-2 rounded-lg"
+              >
+                Annuleren
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={loading}
+                className="glass-button px-4 py-2 rounded-lg disabled:opacity-50"
+              >
+                Wijzigingen Opslaan
+              </button>
             </div>
           </div>
         </div>
