@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { UserProfile, getUserProfile, updateUserProfile, uploadAvatar } from '@/utils/supabase';
 import { User } from '@supabase/supabase-js';
 import { HostingDetails, DatabaseDetails } from "@/types/hosting";
+import { supabase } from '@/utils/supabase';
 
 type SortField = 'client_name' | 'frequency' | 'wp_theme' | 'php_version' | 'ga4_status';
 type SortDirection = 'asc' | 'desc';
@@ -188,36 +189,46 @@ export default function Home() {
 
     try {
       setLoading(true);
-      setError(null);
       
-      const now = new Date();
+      // Create the update object
       const updates: Partial<Subscription> = {
         ...editingSubscription,
-        last_update: now.toISOString(),
-        next_update_due: calculateNextUpdate(editingSubscription).toISOString(),
-        update_status: 'completed' as const,
-        updated_by: user?.id || null,
-        // Only update comment-related fields if the comment has changed
-        ...(editingSubscription.comments !== originalSubscription.comments && {
-          comment_updated_at: now.toISOString(),
-          comment_updated_by: user?.id || null
-        })
+        hosting_info: {
+          host: hostingDetails.host,
+          username: hostingDetails.username,
+          password: hostingDetails.password,
+          port: hostingDetails.port
+        },
+        database_info: {
+          host: databaseDetails.host,
+          databaseName: databaseDetails.databaseName,
+          databaseUser: databaseDetails.databaseUser,
+          password: databaseDetails.password
+        },
+        last_update: new Date().toISOString(),
+        updated_by: user?.id || null
       };
+
+      console.log('Sending update data:', updates);
+
+      // Use the updateSubscription function
+      const updatedData = await updateSubscription(editingSubscription.id, updates);
       
-      const updatedSubscription = await updateSubscription(updates.id!, updates);
-      
-      setSubscriptions(prevSubscriptions => 
-        prevSubscriptions.map(sub => 
-          sub.id === updatedSubscription.id ? updatedSubscription : sub
-        )
-      );
-      
+      console.log('Update successful:', updatedData);
+
+      // Refresh and close
+      await fetchSubscriptions();
       setIsEditModalOpen(false);
       setEditingSubscription(null);
       setOriginalSubscription(null);
+
     } catch (err) {
-      console.error('Save error:', err);
-      setError(err instanceof Error ? err.message : 'Failed to update subscription');
+      console.error('Save error details:', err);
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError('Failed to update subscription');
+      }
     } finally {
       setLoading(false);
     }

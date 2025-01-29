@@ -37,22 +37,32 @@ const ga4StatusMapping: { [key: string]: GA4Status } = {
   'pending': 'pending'
 };
 
-export type Subscription = {
+export interface Subscription {
   id: string;
   client_name: string;
   frequency: 'monthly' | 'quarterly';
-  wp_theme: string | null;
-  php_version: string | null;
+  wp_theme?: string;
+  php_version?: string;
   ga4_status: 'yes' | 'no' | 'pending';
   analytics_check: boolean;
-  last_update: string | null; // ISO date string
-  next_update_due: string | null; // ISO date string
-  update_status: 'completed' | 'pending' | 'overdue' | null;
-  updated_by: string | null;
-  comments: string | null;
-  comment_updated_at: string | null;
-  comment_updated_by: string | null;
-};
+  last_update: string | null;
+  next_update_due: string | null;
+  comments?: string;
+  comment_updated_at?: string;
+  comment_updated_by?: string;
+  hosting_info?: {
+    host: string;
+    username: string;
+    password: string;
+    port: string;
+  } | null;
+  database_info?: {
+    host: string;
+    databaseName: string;
+    databaseUser: string;
+    password: string;
+  } | null;
+}
 
 export type UserProfile = {
   id: string;
@@ -139,7 +149,7 @@ export async function updateSubscription(id: string, updates: Partial<Subscripti
 
   if (error) {
     console.error('Supabase update error:', error);
-    throw new Error(`Failed to update subscription: ${error.message}`);
+    throw error;
   }
 
   if (!data) {
