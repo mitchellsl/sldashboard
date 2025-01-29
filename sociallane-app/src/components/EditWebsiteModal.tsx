@@ -71,7 +71,7 @@ export function EditWebsiteModal({ website, isOpen, onClose }: EditWebsiteModalP
     }
   };
 
-  console.log('Current tab:', activeTab);
+  console.log('Active Tab:', activeTab);
 
   if (!isOpen) return null;
 
