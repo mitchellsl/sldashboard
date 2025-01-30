@@ -26,7 +26,10 @@ export default function Home() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [activeView, setActiveView] = useState('overview');
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const months = [
+    'Januari', 'Februari', 'Maart', 'April', 'Mei', 'Juni', 
+    'Juli', 'Augustus', 'September', 'Oktober', 'November', 'December'
+  ];
   
   // Add new state for search and sort
   const [searchTerm, setSearchTerm] = useState('');
@@ -49,6 +52,8 @@ export default function Home() {
   // Add new state for table collapse
   const [isMonthlyCollapsed, setIsMonthlyCollapsed] = useState(false);
   const [isQuarterlyCollapsed, setIsQuarterlyCollapsed] = useState(false);
+  const [isUpdatesProgressCollapsed, setIsUpdatesProgressCollapsed] = useState(false);
+  const [isMonthsModalOpen, setIsMonthsModalOpen] = useState(false);
 
   // Add new state for hosting and database details
   const [activeTab, setActiveTab] = useState("general");
@@ -166,15 +171,40 @@ export default function Home() {
         ...subscription,
         last_update: new Date().toISOString(),
         next_update_due: nextUpdateDate.toISOString(),
-        update_status: 'completed' as const
+        update_status: 'completed' as const,
+        updated_by: user?.id || null
       };
 
       await updateSubscription(subscriptionId, updates);
-      await fetchSubscriptions();
+      
+      // Update local state immediately
+      setSubscriptions(prevSubscriptions => 
+        prevSubscriptions.map(sub => 
+          sub.id === subscriptionId ? { ...sub, ...updates } : sub
+        )
+      );
+
+      // Close modal if no more pending updates
+      const remainingUpdates = getPendingUpdates().filter(s => s.id !== subscriptionId);
+      if (remainingUpdates.length === 0) {
+        setIsUpdatesModalOpen(false);
+      }
     } catch (err) {
       console.error('Error marking update as completed:', err);
       setError(err instanceof Error ? err.message : 'Failed to mark update as completed');
     }
+  };
+
+  // Add function to get updates count for a specific month
+  const getMonthUpdatesCount = (month: number) => {
+    return subscriptions.filter(subscription => {
+      const nextUpdate = subscription.next_update_due ? new Date(subscription.next_update_due) : null;
+      return nextUpdate?.getMonth() === month;
+    }).reduce((counts, subscription) => {
+      const status = subscription.update_status || 'pending';
+      counts[status] = (counts[status] || 0) + 1;
+      return counts;
+    }, {} as Record<string, number>);
   };
 
   async function fetchSubscriptions() {
@@ -619,63 +649,209 @@ export default function Home() {
               </button>
             </div>
             <div className="grid grid-cols-7 gap-2">
-              {months.map((month, index) => (
-                <button
-                  key={month}
-                  className={`p-2 rounded-lg text-center ${
-                    selectedMonth === index 
-                      ? 'bg-purple-500 text-white' 
-                      : 'hover:bg-gray-700'
-                  }`}
-                  onClick={() => setSelectedMonth(index)}
-                >
-                  {month}
-                </button>
-              ))}
+              {months.map((month, index) => {
+                const counts = getMonthUpdatesCount(index);
+                return (
+                  <button
+                    key={month}
+                    className={`p-2 rounded-lg text-center relative ${
+                      selectedMonth === index 
+                        ? 'bg-purple-500 text-white' 
+                        : 'hover:bg-gray-700'
+                    }`}
+                    onClick={() => setSelectedMonth(index)}
+                  >
+                    {/* Update Badges */}
+                    <div className="absolute top-0.5 right-0.5 flex flex-col gap-1">
+                      {/* Open Updates (Pending + Overdue) */}
+                      {(counts.pending || 0) + (counts.overdue || 0) > 0 && (
+                        <span className="bg-yellow-500 text-white text-xs rounded-full px-1.5 py-0.5 flex items-center justify-center" 
+                              title={`${(counts.pending || 0) + (counts.overdue || 0)} open updates`}
+                        >
+                          {(counts.pending || 0) + (counts.overdue || 0)}
+                        </span>
+                      )}
+                      {/* Completed Updates */}
+                      {(counts.completed || 0) > 0 && (
+                        <span className="bg-green-500 text-white text-xs rounded-full px-1.5 py-0.5 flex items-center justify-center" 
+                              title={`${counts.completed} completed updates`}
+                        >
+                          {counts.completed}
+                        </span>
+                      )}
+                    </div>
+                    <span>{month}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex justify-end mt-4 gap-4 text-sm text-gray-400">
+              <div className="flex items-center gap-1">
+                <span className="px-1.5 py-0.5 rounded-full bg-yellow-500 flex items-center justify-center text-xs text-white">2</span>
+                <span>Open Updates</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="px-1.5 py-0.5 rounded-full bg-green-500 flex items-center justify-center text-xs text-white">1</span>
+                <span>Completed</span>
+              </div>
             </div>
           </div>
 
           {/* Client Distribution */}
-          <div className="card p-6">
-            <h2 className="text-lg font-semibold mb-6">Abonnementsverdeling</h2>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-400">Maandelijks</span>
-                  <span className="text-sm text-purple-500">{Math.round(monthlyClients/totalClients*100)}%</span>
+          <div className="grid grid-cols-2 gap-6">
+            <div className="card p-6">
+              <h2 className="text-lg font-semibold mb-6">Abonnementsverdeling</h2>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-400">Maandelijks</span>
+                    <span className="text-sm text-purple-500">{Math.round(monthlyClients/totalClients*100)}%</span>
+                  </div>
+                  <div className="w-full bg-gray-800 rounded-full h-2">
+                    <div 
+                      className="bg-purple-500 h-2 rounded-full transition-all duration-500"
+                      style={{ width: `${Math.round(monthlyClients/totalClients*100)}%` }}
+                    />
+                  </div>
                 </div>
-                <div className="w-full bg-gray-800 rounded-full h-2">
-                  <div 
-                    className="bg-purple-500 h-2 rounded-full transition-all duration-500"
-                    style={{ width: `${Math.round(monthlyClients/totalClients*100)}%` }}
-                  />
+
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-400">Per kwartaal</span>
+                    <span className="text-sm text-yellow-500">{Math.round(quarterlyClients/totalClients*100)}%</span>
+                  </div>
+                  <div className="w-full bg-gray-800 rounded-full h-2">
+                    <div 
+                      className="bg-yellow-500 h-2 rounded-full transition-all duration-500"
+                      style={{ width: `${Math.round(quarterlyClients/totalClients*100)}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-4 flex justify-between text-sm text-gray-400">
+                  <div>Totaal klanten: {totalClients}</div>
+                  <div className="flex gap-4">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-purple-500"></div>
+                      <span>{monthlyClients} Maandelijks</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+                      <span>{quarterlyClients} Per kwartaal</span>
+                    </div>
+                  </div>
                 </div>
               </div>
+            </div>
 
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-400">Per kwartaal</span>
-                  <span className="text-sm text-yellow-500">{Math.round(quarterlyClients/totalClients*100)}%</span>
+            {/* Monthly Updates Progress */}
+            <div className="card p-6">
+              <h2 
+                className="text-lg font-semibold mb-6 flex items-center justify-between cursor-pointer select-none"
+                onClick={() => setIsUpdatesProgressCollapsed(!isUpdatesProgressCollapsed)}
+              >
+                <div className="flex items-center gap-2">
+                  <span>Updates Deze Maand</span>
+                  <svg 
+                    className={`w-5 h-5 transition-transform ${isUpdatesProgressCollapsed ? '-rotate-90' : ''}`} 
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
                 </div>
-                <div className="w-full bg-gray-800 rounded-full h-2">
-                  <div 
-                    className="bg-yellow-500 h-2 rounded-full transition-all duration-500"
-                    style={{ width: `${Math.round(quarterlyClients/totalClients*100)}%` }}
-                  />
-                </div>
-              </div>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsMonthsModalOpen(true);
+                  }}
+                  className="text-sm text-purple-400 hover:text-purple-300"
+                >
+                  Bekijk Alle Maanden
+                </button>
+              </h2>
+              <div className={`transition-all duration-300`}>
+                <div className={`${isUpdatesProgressCollapsed ? 'space-y-4' : 'max-h-[400px] overflow-y-auto pr-2 space-y-4 custom-scrollbar'}`}>
+                  {months.slice(
+                    isUpdatesProgressCollapsed ? new Date().getMonth() : 0,
+                    isUpdatesProgressCollapsed ? new Date().getMonth() + 2 : months.length
+                  ).map((month, index) => {
+                    const actualIndex = isUpdatesProgressCollapsed ? new Date().getMonth() + index : index;
+                    const monthlySubscriptions = subscriptions.filter(s => {
+                      const nextUpdate = s.next_update_due ? new Date(s.next_update_due) : null;
+                      return nextUpdate && 
+                             nextUpdate.getMonth() === actualIndex && 
+                             s.frequency === 'monthly';
+                    });
 
-              <div className="mt-4 flex justify-between text-sm text-gray-400">
-                <div>Totaal klanten: {totalClients}</div>
-                <div className="flex gap-4">
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-purple-500"></div>
-                    <span>{monthlyClients} Maandelijks</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-                    <span>{quarterlyClients} Per kwartaal</span>
-                  </div>
+                    const quarterlySubscriptions = subscriptions.filter(s => {
+                      const nextUpdate = s.next_update_due ? new Date(s.next_update_due) : null;
+                      return nextUpdate && 
+                             nextUpdate.getMonth() === actualIndex && 
+                             s.frequency === 'quarterly';
+                    });
+
+                    const monthlyRequired = monthlySubscriptions.length;
+                    const quarterlyRequired = quarterlySubscriptions.length;
+                    const monthlyCompleted = monthlySubscriptions.filter(s => s.update_status === 'completed').length;
+                    const quarterlyCompleted = quarterlySubscriptions.filter(s => s.update_status === 'completed').length;
+                    const monthlyPercentage = monthlyRequired > 0 ? Math.round((monthlyCompleted / monthlyRequired) * 100) : 0;
+                    const quarterlyPercentage = quarterlyRequired > 0 ? Math.round((quarterlyCompleted / quarterlyRequired) * 100) : 0;
+
+                    return (
+                      <div key={month} className="space-y-3">
+                        <div className="text-sm text-gray-400 font-medium flex justify-between">
+                          <span>{month}</span>
+                          <span className="text-xs">
+                            {monthlyRequired + quarterlyRequired} updates nodig
+                          </span>
+                        </div>
+                        {/* Monthly Progress */}
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-center">
+                            <span className="text-xs text-gray-400">
+                              Maandelijks ({monthlyCompleted}/{monthlyRequired})
+                            </span>
+                            <span className={`text-xs ${monthlyPercentage >= 70 ? 'text-green-500' : monthlyPercentage >= 30 ? 'text-yellow-500' : 'text-red-500'}`}>
+                              {monthlyPercentage}%
+                            </span>
+                          </div>
+                          <div className="w-full bg-gray-800 rounded-full h-1.5">
+                            <div 
+                              className={`h-1.5 rounded-full transition-all duration-500 ${
+                                monthlyPercentage >= 70 ? 'bg-green-500' : 
+                                monthlyPercentage >= 30 ? 'bg-yellow-500' : 
+                                'bg-red-500'
+                              }`}
+                              style={{ width: `${monthlyPercentage}%` }}
+                            />
+                          </div>
+                        </div>
+                        {/* Quarterly Progress */}
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-center">
+                            <span className="text-xs text-gray-400">
+                              Kwartaal ({quarterlyCompleted}/{quarterlyRequired})
+                            </span>
+                            <span className={`text-xs ${quarterlyPercentage >= 70 ? 'text-green-500' : quarterlyPercentage >= 30 ? 'text-yellow-500' : 'text-red-500'}`}>
+                              {quarterlyPercentage}%
+                            </span>
+                          </div>
+                          <div className="w-full bg-gray-800 rounded-full h-1.5">
+                            <div 
+                              className={`h-1.5 rounded-full transition-all duration-500 ${
+                                quarterlyPercentage >= 70 ? 'bg-green-500' : 
+                                quarterlyPercentage >= 30 ? 'bg-yellow-500' : 
+                                'bg-red-500'
+                              }`}
+                              style={{ width: `${quarterlyPercentage}%` }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -685,7 +861,7 @@ export default function Home() {
           <div className="card p-6 lg:col-span-2">
             <div className="flex flex-col gap-8">
               {/* Common Header with Search and Import */}
-              <div className="flex justify-between items-center">
+              <div className="flex justify-between items-center mb-6">
                 <h2 className="text-lg font-semibold">Alle Klanten</h2>
                 <div className="flex gap-4">
                   <input
@@ -720,8 +896,8 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Monthly Clients Table */}
-              <div>
+              {/* Monthly Clients Section */}
+              <div className="card p-6 mb-6">
                 <h3 
                   className="text-lg font-semibold mb-4 flex items-center gap-2 cursor-pointer select-none"
                   onClick={() => setIsMonthlyCollapsed(!isMonthlyCollapsed)}
@@ -794,8 +970,8 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Quarterly Clients Table */}
-              <div>
+              {/* Quarterly Clients Section */}
+              <div className="card p-6">
                 <h3 
                   className="text-lg font-semibold mb-4 flex items-center gap-2 cursor-pointer select-none"
                   onClick={() => setIsQuarterlyCollapsed(!isQuarterlyCollapsed)}
@@ -1190,24 +1366,121 @@ export default function Home() {
                   >
                     <div>
                       <h3 className="font-semibold">{subscription.client_name}</h3>
-                      <p className="text-sm text-gray-400">
-                        Volgende update: {formatDate(subscription.next_update_due)}
-                      </p>
+                      <div className="space-y-1">
+                        <p className="text-sm text-gray-400">
+                          Volgende update: {formatDate(subscription.next_update_due)}
+                        </p>
+                        <p className="text-sm text-gray-400">
+                          Type: {subscription.frequency === 'monthly' ? 'Maandelijks' : 'Kwartaal'}
+                        </p>
+                      </div>
                     </div>
                     <button
-                      onClick={() => {
-                        markUpdateAsCompleted(subscription.id);
-                        if (getPendingUpdates().length === 1) {
-                          setIsUpdatesModalOpen(false);
-                        }
-                      }}
-                      className="glass-button px-4 py-2 rounded-lg text-sm"
+                      onClick={() => markUpdateAsCompleted(subscription.id)}
+                      className="glass-button px-4 py-2 rounded-lg text-sm hover:bg-green-500/20 hover:text-green-400 transition-colors"
                     >
                       Markeer als Voltooid
                     </button>
                   </div>
                 ))
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Full Months Modal */}
+      {isMonthsModalOpen && (
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="card p-6 w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-semibold">Updates Overzicht - Alle Maanden</h2>
+              <button
+                onClick={() => setIsMonthsModalOpen(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="overflow-y-auto flex-grow pr-4 custom-scrollbar">
+              <div className="grid grid-cols-2 gap-6">
+                {months.map((month, index) => {
+                  const monthlySubscriptions = subscriptions.filter(s => {
+                    const nextUpdate = s.next_update_due ? new Date(s.next_update_due) : null;
+                    return nextUpdate && 
+                           nextUpdate.getMonth() === index && 
+                           s.frequency === 'monthly';
+                  });
+
+                  const quarterlySubscriptions = subscriptions.filter(s => {
+                    const nextUpdate = s.next_update_due ? new Date(s.next_update_due) : null;
+                    return nextUpdate && 
+                           nextUpdate.getMonth() === index && 
+                           s.frequency === 'quarterly';
+                  });
+
+                  const monthlyRequired = monthlySubscriptions.length;
+                  const quarterlyRequired = quarterlySubscriptions.length;
+                  const monthlyCompleted = monthlySubscriptions.filter(s => s.update_status === 'completed').length;
+                  const quarterlyCompleted = quarterlySubscriptions.filter(s => s.update_status === 'completed').length;
+                  const monthlyPercentage = monthlyRequired > 0 ? Math.round((monthlyCompleted / monthlyRequired) * 100) : 0;
+                  const quarterlyPercentage = quarterlyRequired > 0 ? Math.round((quarterlyCompleted / quarterlyRequired) * 100) : 0;
+
+                  return (
+                    <div key={month} className="card p-4 space-y-3">
+                      <div className="text-lg text-white font-medium flex justify-between items-center">
+                        <span>{month}</span>
+                        <span className="text-sm text-gray-400">
+                          {monthlyRequired + quarterlyRequired} updates nodig
+                        </span>
+                      </div>
+                      {/* Monthly Progress */}
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm text-gray-400">
+                            Maandelijks ({monthlyCompleted}/{monthlyRequired})
+                          </span>
+                          <span className={`text-sm ${monthlyPercentage >= 70 ? 'text-green-500' : monthlyPercentage >= 30 ? 'text-yellow-500' : 'text-red-500'}`}>
+                            {monthlyPercentage}%
+                          </span>
+                        </div>
+                        <div className="w-full bg-gray-800 rounded-full h-2">
+                          <div 
+                            className={`h-2 rounded-full transition-all duration-500 ${
+                              monthlyPercentage >= 70 ? 'bg-green-500' : 
+                              monthlyPercentage >= 30 ? 'bg-yellow-500' : 
+                              'bg-red-500'
+                            }`}
+                            style={{ width: `${monthlyPercentage}%` }}
+                          />
+                        </div>
+                      </div>
+                      {/* Quarterly Progress */}
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm text-gray-400">
+                            Kwartaal ({quarterlyCompleted}/{quarterlyRequired})
+                          </span>
+                          <span className={`text-sm ${quarterlyPercentage >= 70 ? 'text-green-500' : quarterlyPercentage >= 30 ? 'text-yellow-500' : 'text-red-500'}`}>
+                            {quarterlyPercentage}%
+                          </span>
+                        </div>
+                        <div className="w-full bg-gray-800 rounded-full h-2">
+                          <div 
+                            className={`h-2 rounded-full transition-all duration-500 ${
+                              quarterlyPercentage >= 70 ? 'bg-green-500' : 
+                              quarterlyPercentage >= 30 ? 'bg-yellow-500' : 
+                              'bg-red-500'
+                            }`}
+                            style={{ width: `${quarterlyPercentage}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>
