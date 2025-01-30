@@ -1,33 +1,55 @@
 # Dependencies
-node_modules/
-vendor/
+node_modules
+**/node_modules
+/node_modules
+
+# Next.js
+.next
+**/.next
+/.next
+/out
+
+# Build outputs
+dist
+build
+/build
+/dist
+
+# Data
+/data
+**/data
+data/
+
+# IDE and editor files
+.idea
+.vscode
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Environment variables
 .env
 .env.*
 !.env.example
 .env.local
 .env.*.local
 
-# Build outputs
-dist/
-build/
-*.pyc
-__pycache__/
-*.class
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# IDE and editor files
-.idea/
-.vscode/
-*.swp
-*.swo
-.DS_Store
-Thumbs.db
+# Vercel
+.vercel
 
-# Logs and databases
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# Logs
 *.log
-*.sqlite
-*.sqlite3
 logs/
-*.db
 
 # Testing and coverage
 coverage/
@@ -38,80 +60,4 @@ htmlcov/
 # Temporary files
 tmp/
 temp/
-.cache/ 
-sociallane-app/.next/app-build-manifest.json
-sociallane-app/.next/app-build-manifest.json
-sociallane-app/.next/build-manifest.json
-sociallane-app/.next/fallback-build-manifest.json
-sociallane-app/.next/server/app-paths-manifest.json
-*.json
-sociallane-app/.next/app-build-manifest.json
-sociallane-app/.next/build-manifest.json
-sociallane-app/.next/fallback-build-manifest.json
-sociallane-app/.next/server/app-paths-manifest.json
-sociallane-app/.next/server/chunks/ssr/\[root of the server\]__9a168d._.css
-sociallane-app/.next/server/chunks/ssr/\[root of the server\]__9a168d._.css.map
-sociallane-app/.next/server/chunks/ssr/src_app_globals_b52d8e.css
-sociallane-app/.next/server/chunks/ssr/src_app_globals_b52d8e.css.map
-sociallane-app/.next/server/chunks/ssr/src_dd74af._.js
-sociallane-app/.next/server/chunks/ssr/src_dd74af._.js.map
-sociallane-app/.next/server/middleware-build-manifest.js
-sociallane-app/.next/server/middleware-manifest.json
-sociallane-app/.next/server/next-font-manifest.js
-sociallane-app/.next/server/next-font-manifest.json
-sociallane-app/.next/server/pages-manifest.json
-sociallane-app/.next/static/chunks/\[root of the server\]__9a168d._.css
-sociallane-app/.next/static/chunks/\[root of the server\]__9a168d._.css.map
-sociallane-app/.next/static/chunks/src_a5b05c._.js
-sociallane-app/.next/static/chunks/src_a5b05c._.js.map
-sociallane-app/.next/static/chunks/src_app_globals_b52d8e.css
-sociallane-app/.next/static/chunks/src_app_globals_b52d8e.css.map
-/sociallane-app/.next
-/sociallane-app/.next
-sociallane-app/.next/app-build-manifest.json
-sociallane-app/.next/build-manifest.json
-sociallane-app/.next/fallback-build-manifest.json
-sociallane-app/.next/react-loadable-manifest.json
-sociallane-app/.next/server/app-paths-manifest.json
-sociallane-app/.next/server/app/page_client-reference-manifest.js
-sociallane-app/.next/server/middleware-build-manifest.js
-sociallane-app/.next/server/next-font-manifest.js
-sociallane-app/.next/server/next-font-manifest.json
-sociallane-app/.next/server/pages-manifest.json
-sociallane-app/.next/server/server-reference-manifest.js
-sociallane-app/.next/static/development/_buildManifest.js
-/sociallane-app/.next
-/sociallane-app/.next
-/sociallane-app/.next
-/sociallane-app/.next
-/sociallane-app/.next/static
-/sociallane-app/.next/static/chunks
-
-# Next.js
-/.next/
-/out/
-
-# Production
-/build
-
-# Data
-/data/
-
-# Misc
-.DS_Store
-*.pem
-
-# Debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Local env files
-.env*.local
-
-# Vercel
-.vercel
-
-# TypeScript
-*.tsbuildinfo
-next-env.d.ts
+.cache/
