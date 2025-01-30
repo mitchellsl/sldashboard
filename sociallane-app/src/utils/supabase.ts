@@ -254,31 +254,4 @@ export async function uploadAvatar(userId: string, file: File) {
     console.error(`Error uploading avatar: ${error}`);
     throw new Error('Failed to upload avatar. Please try again.');
   }
-}
-
-export async function createSubscription(data: Omit<Subscription, 'id'>): Promise<Subscription> {
-  const { data: newSubscription, error } = await supabase
-    .from('subscriptions')
-    .insert([{
-      ...data,
-      client_name: data.client_name.trim(),
-      wp_theme: data.wp_theme?.trim() || null,
-      php_version: data.php_version?.toString().trim() || null,
-      last_update: data.last_update || null,
-      next_update_due: data.next_update_due || null,
-      comments: data.comments?.trim() || null
-    }])
-    .select()
-    .single();
-
-  if (error) {
-    console.error('Error creating subscription:', error);
-    throw error;
-  }
-
-  if (!newSubscription) {
-    throw new Error('No data returned after creating subscription');
-  }
-
-  return newSubscription;
 } 
