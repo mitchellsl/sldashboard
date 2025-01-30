@@ -105,9 +105,11 @@ var _s = __turbopack_refresh__.signature(), _s1 = __turbopack_refresh__.signatur
 const ThemeContext = /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["createContext"])(undefined);
 function ThemeProvider({ children }) {
     _s();
-    const [theme, setTheme] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])('dark');
+    const [theme, setTheme] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])('light');
+    const [mounted, setMounted] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(false);
     (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
         "ThemeProvider.useEffect": ()=>{
+            setMounted(true);
             // Check if theme preference exists in localStorage
             const savedTheme = localStorage.getItem('theme');
             if (savedTheme) {
@@ -122,11 +124,15 @@ function ThemeProvider({ children }) {
         }
     }["ThemeProvider.useEffect"], []);
     const toggleTheme = ()=>{
-        const newTheme = theme === 'dark' ? 'light' : 'dark';
+        const newTheme = theme === 'light' ? 'dark' : 'light';
         setTheme(newTheme);
         localStorage.setItem('theme', newTheme);
-        document.documentElement.classList.toggle('dark', newTheme === 'dark');
+        document.documentElement.classList.toggle('dark');
     };
+    // Avoid hydration mismatch
+    if (!mounted) {
+        return null;
+    }
     return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(ThemeContext.Provider, {
         value: {
             theme,
@@ -135,11 +141,11 @@ function ThemeProvider({ children }) {
         children: children
     }, void 0, false, {
         fileName: "[project]/src/contexts/ThemeContext.tsx",
-        lineNumber: 39,
+        lineNumber: 46,
         columnNumber: 5
     }, this);
 }
-_s(ThemeProvider, "D0ekClnfIGVExrH5c3Ka+aWcxxE=");
+_s(ThemeProvider, "YCKE2uRMIshh/+RpyjK2SrKjidc=");
 _c = ThemeProvider;
 function useTheme() {
     _s1();
