@@ -23,19 +23,20 @@ export async function POST(request: Request) {
     const excelData = await readExcelFile(filePath);
     
     // Import data to Supabase
-    await importExcelToSupabase(excelData.rows);
+    const result = await importExcelToSupabase(excelData.rows);
     
     // Clean up temporary file
     await require('fs').promises.unlink(filePath);
 
     return NextResponse.json({ 
       message: 'Import successful',
-      rowsImported: excelData.rows.length 
+      ...result,
+      totalRows: excelData.rows.length 
     });
   } catch (error) {
     console.error('Import error:', error);
     return NextResponse.json(
-      { error: 'Failed to import data' },
+      { error: error instanceof Error ? error.message : 'Failed to import data' },
       { status: 500 }
     );
   }

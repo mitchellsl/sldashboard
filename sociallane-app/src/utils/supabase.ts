@@ -100,32 +100,64 @@ function normalizeBoolean(value: any): boolean {
   return false;
 }
 
-export async function importExcelToSupabase(data: any[]): Promise<void> {
-  const { error } = await supabase
-    .from('subscriptions')
-    .insert(data.map(row => ({
-      client_name: row[0]?.trim() || 'Unknown Client',
-      frequency: normalizeFrequency(row[1]),
-      wp_theme: row[2]?.trim() || null,
-      php_version: row[3]?.toString().trim() || null,
-      ga4_status: normalizeGA4Status(row[4]),
-      analytics_check: normalizeBoolean(row[5]),
-      january: normalizeBoolean(row[6]),
-      february: normalizeBoolean(row[7]),
-      march: normalizeBoolean(row[8]),
-      april: normalizeBoolean(row[9]),
-      may: normalizeBoolean(row[10]),
-      june: normalizeBoolean(row[11]),
-      july: normalizeBoolean(row[12]),
-      august: normalizeBoolean(row[13]),
-      september: normalizeBoolean(row[14]),
-      october: normalizeBoolean(row[15]),
-      november: normalizeBoolean(row[16]),
-      december: normalizeBoolean(row[17]),
-      notes: row[18]?.toString().trim() || null
-    })));
+export async function importExcelToSupabase(data: any[]): Promise<{ success: number; skipped: number; error: number }> {
+  let successCount = 0;
+  let skippedCount = 0;
+  let errorCount = 0;
 
-  if (error) throw error;
+  for (const row of data) {
+    try {
+      const clientName = row[0]?.trim() || 'Unknown Client';
+      
+      // Check for existing subscription
+      const { data: existingData, error: checkError } = await supabase
+        .from('subscriptions')
+        .select('id')
+        .ilike('client_name', clientName)
+        .maybeSingle();
+
+      if (checkError) {
+        console.error('Error checking for existing subscription:', checkError);
+        errorCount++;
+        continue;
+      }
+
+      if (existingData) {
+        console.log(`Skipping duplicate client: ${clientName}`);
+        skippedCount++;
+        continue;
+      }
+
+      // Add new subscription
+      const { error: insertError } = await supabase
+        .from('subscriptions')
+        .insert([{
+          client_name: clientName,
+          frequency: normalizeFrequency(row[1]),
+          wp_theme: row[2]?.trim() || null,
+          php_version: row[3]?.toString().trim() || null,
+          ga4_status: normalizeGA4Status(row[4]),
+          analytics_check: normalizeBoolean(row[5]),
+          comments: row[18]?.toString().trim() || null
+        }]);
+
+      if (insertError) {
+        console.error('Error importing subscription:', insertError);
+        if (insertError.code === '23505') {
+          skippedCount++;
+        } else {
+          errorCount++;
+        }
+      } else {
+        successCount++;
+      }
+    } catch (err) {
+      console.error('Error processing row:', err);
+      errorCount++;
+    }
+  }
+
+  return { success: successCount, skipped: skippedCount, error: errorCount };
 }
 
 export async function getSubscriptions() {

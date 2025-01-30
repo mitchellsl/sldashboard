@@ -75,6 +75,10 @@ export default function Home() {
   const [isUpdatesModalOpen, setIsUpdatesModalOpen] = useState(false);
   const [selectedSubscriptionId, setSelectedSubscriptionId] = useState<string | null>(null);
 
+  // Add new state for previous subscriptions and revert button
+  const [previousSubscriptions, setPreviousSubscriptions] = useState<Subscription[] | null>(null);
+  const [showRevertButton, setShowRevertButton] = useState(false);
+
   useEffect(() => {
     fetchSubscriptions();
     if (user) {
@@ -229,6 +233,9 @@ export default function Home() {
 
     try {
       setLoading(true);
+      setError(null);
+      setPreviousSubscriptions(subscriptions);
+      
       const formData = new FormData();
       formData.append('file', selectedFile);
 
@@ -237,13 +244,47 @@ export default function Home() {
         body: formData,
       });
 
-      if (!response.ok) throw new Error('Import failed');
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Import failed');
+      }
+
+      // Refresh the subscriptions list
       await fetchSubscriptions();
+      setShowRevertButton(true);
+      
+      // Show detailed success message
+      const message = `Import voltooid: ${result.success} nieuwe klanten toegevoegd, ${result.skipped} dubbele overgeslagen, ${result.error} fouten.`;
+      setError(message);
+
     } catch (err) {
+      console.error('Import error:', err);
       setError(err instanceof Error ? err.message : 'Import failed');
     } finally {
       setLoading(false);
       setSelectedFile(null);
+    }
+  }
+
+  async function handleRevertImport() {
+    if (!previousSubscriptions) return;
+
+    try {
+      setLoading(true);
+      
+      // Revert each subscription back to its previous state
+      for (const subscription of previousSubscriptions) {
+        await updateSubscription(subscription.id, subscription);
+      }
+
+      await fetchSubscriptions();
+      setPreviousSubscriptions(null);
+      setShowRevertButton(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to revert import');
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -893,6 +934,21 @@ export default function Home() {
                       Uploaden
                     </button>
                   )}
+                  {showRevertButton && (
+                    <button
+                      onClick={handleRevertImport}
+                      disabled={loading || !previousSubscriptions}
+                      className="glass-button px-4 py-2 rounded-lg bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 disabled:opacity-50"
+                      title="Herstel naar vorige import"
+                    >
+                      <div className="flex items-center gap-2">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                        </svg>
+                        <span>Herstel Import</span>
+                      </div>
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -1438,16 +1494,16 @@ export default function Home() {
                       {/* Monthly Progress */}
                       <div className="space-y-2">
                         <div className="flex justify-between items-center">
-                          <span className="text-sm text-gray-400">
+                          <span className="text-xs text-gray-400">
                             Maandelijks ({monthlyCompleted}/{monthlyRequired})
                           </span>
-                          <span className={`text-sm ${monthlyPercentage >= 70 ? 'text-green-500' : monthlyPercentage >= 30 ? 'text-yellow-500' : 'text-red-500'}`}>
+                          <span className={`text-xs ${monthlyPercentage >= 70 ? 'text-green-500' : monthlyPercentage >= 30 ? 'text-yellow-500' : 'text-red-500'}`}>
                             {monthlyPercentage}%
                           </span>
                         </div>
-                        <div className="w-full bg-gray-800 rounded-full h-2">
+                        <div className="w-full bg-gray-800 rounded-full h-1.5">
                           <div 
-                            className={`h-2 rounded-full transition-all duration-500 ${
+                            className={`h-1.5 rounded-full transition-all duration-500 ${
                               monthlyPercentage >= 70 ? 'bg-green-500' : 
                               monthlyPercentage >= 30 ? 'bg-yellow-500' : 
                               'bg-red-500'
@@ -1459,16 +1515,16 @@ export default function Home() {
                       {/* Quarterly Progress */}
                       <div className="space-y-2">
                         <div className="flex justify-between items-center">
-                          <span className="text-sm text-gray-400">
+                          <span className="text-xs text-gray-400">
                             Kwartaal ({quarterlyCompleted}/{quarterlyRequired})
                           </span>
-                          <span className={`text-sm ${quarterlyPercentage >= 70 ? 'text-green-500' : quarterlyPercentage >= 30 ? 'text-yellow-500' : 'text-red-500'}`}>
+                          <span className={`text-xs ${quarterlyPercentage >= 70 ? 'text-green-500' : quarterlyPercentage >= 30 ? 'text-yellow-500' : 'text-red-500'}`}>
                             {quarterlyPercentage}%
                           </span>
                         </div>
-                        <div className="w-full bg-gray-800 rounded-full h-2">
+                        <div className="w-full bg-gray-800 rounded-full h-1.5">
                           <div 
-                            className={`h-2 rounded-full transition-all duration-500 ${
+                            className={`h-1.5 rounded-full transition-all duration-500 ${
                               quarterlyPercentage >= 70 ? 'bg-green-500' : 
                               quarterlyPercentage >= 30 ? 'bg-yellow-500' : 
                               'bg-red-500'

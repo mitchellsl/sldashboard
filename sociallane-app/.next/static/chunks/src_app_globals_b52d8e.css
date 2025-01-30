@@ -880,6 +880,10 @@ body {
   background-color: rgb(239 68 68 / var(--tw-bg-opacity, 1));
 }
 
+.bg-yellow-500\/10 {
+  background-color: #eab3081a;
+}
+
 .bg-opacity-50 {
   --tw-bg-opacity: .5;
 }
@@ -1173,6 +1177,10 @@ body {
 
 .hover\:bg-green-500\/20:hover {
   background-color: #22c55e33;
+}
+
+.hover\:bg-yellow-500\/20:hover {
+  background-color: #eab30833;
 }
 
 .hover\:text-gray-700:hover {
