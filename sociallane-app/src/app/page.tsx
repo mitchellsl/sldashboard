@@ -1,12 +1,14 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Subscription, getSubscriptions, updateSubscription, deleteSubscription, createSubscription } from '@/utils/supabase';
+import { Subscription, getSubscriptions, updateSubscription, deleteSubscription } from '@/utils/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserProfile, getUserProfile, updateUserProfile, uploadAvatar } from '@/utils/supabase';
 import { User } from '@supabase/supabase-js';
 import { HostingDetails, DatabaseDetails } from "@/types/hosting";
 import { supabase } from '@/utils/supabase';
+import { signInToMicrosoft, signOutFromMicrosoft, getMicrosoftConnectionStatus, listExcelFiles } from '@/utils/onedrive';
+import { AccountInfo } from '@azure/msal-browser';
 
 type SortField = 'client_name' | 'frequency' | 'wp_theme' | 'php_version' | 'ga4_status';
 type SortDirection = 'asc' | 'desc';
@@ -18,6 +20,11 @@ type UpdateHistory = {
   frequency: 'monthly' | 'quarterly';
   update_status: 'completed' | 'pending' | 'overdue';
 };
+
+interface MicrosoftStatus {
+  isConnected: boolean;
+  account: AccountInfo | null;
+}
 
 export default function Home() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
@@ -75,26 +82,32 @@ export default function Home() {
   const [isUpdatesModalOpen, setIsUpdatesModalOpen] = useState(false);
   const [selectedSubscriptionId, setSelectedSubscriptionId] = useState<string | null>(null);
 
-  // Add new state for new client modal
-  const [isNewClientModalOpen, setIsNewClientModalOpen] = useState(false);
-  const [newSubscription, setNewSubscription] = useState<Omit<Subscription, 'id'>>({
-    client_name: '',
-    frequency: 'monthly',
-    wp_theme: '',
-    php_version: '',
-    ga4_status: 'no',
-    analytics_check: false,
-    last_update: null,
-    next_update_due: null,
-    hosting_details: null,
-    database_details: null
-  });
+  // Add new state for previous subscriptions and revert button
+  const [previousSubscriptions, setPreviousSubscriptions] = useState<Subscription[] | null>(null);
+  const [showRevertButton, setShowRevertButton] = useState(false);
+
+  // Add new state for Microsoft connection status and Excel files
+  const [microsoftStatus, setMicrosoftStatus] = useState<MicrosoftStatus>({ isConnected: false, account: null });
+  const [excelFiles, setExcelFiles] = useState<Array<{ id: string; name: string; webUrl: string }>>([]);
 
   useEffect(() => {
     fetchSubscriptions();
     if (user) {
       fetchUserProfile();
     }
+    const checkMicrosoftStatus = async () => {
+      try {
+        const status = await getMicrosoftConnectionStatus();
+        setMicrosoftStatus(status);
+        if (status.isConnected) {
+          const files = await listExcelFiles();
+          setExcelFiles(files);
+        }
+      } catch (error) {
+        console.error('Error checking Microsoft status:', error);
+      }
+    };
+    checkMicrosoftStatus();
   }, [user]);
 
   // Add sort function
@@ -244,6 +257,9 @@ export default function Home() {
 
     try {
       setLoading(true);
+      setError(null);
+      setPreviousSubscriptions(subscriptions);
+      
       const formData = new FormData();
       formData.append('file', selectedFile);
 
@@ -252,13 +268,47 @@ export default function Home() {
         body: formData,
       });
 
-      if (!response.ok) throw new Error('Import failed');
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Import failed');
+      }
+
+      // Refresh the subscriptions list
       await fetchSubscriptions();
+      setShowRevertButton(true);
+      
+      // Show detailed success message
+      const message = `Import voltooid: ${result.success} nieuwe klanten toegevoegd, ${result.skipped} dubbele overgeslagen, ${result.error} fouten.`;
+      setError(message);
+
     } catch (err) {
+      console.error('Import error:', err);
       setError(err instanceof Error ? err.message : 'Import failed');
     } finally {
       setLoading(false);
       setSelectedFile(null);
+    }
+  }
+
+  async function handleRevertImport() {
+    if (!previousSubscriptions) return;
+
+    try {
+      setLoading(true);
+      
+      // Revert each subscription back to its previous state
+      for (const subscription of previousSubscriptions) {
+        await updateSubscription(subscription.id, subscription);
+      }
+
+      await fetchSubscriptions();
+      setPreviousSubscriptions(null);
+      setShowRevertButton(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to revert import');
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -477,6 +527,49 @@ export default function Home() {
         )}
 
         <div className="space-y-6">
+          {/* Microsoft Connection Status */}
+          <div className="border-b border-gray-700 pb-6">
+            <h3 className="font-medium mb-4">Microsoft Connection</h3>
+            <div className="flex items-center gap-4">
+              <div className={`w-3 h-3 rounded-full ${microsoftStatus.isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+              <span>{microsoftStatus.isConnected ? 'Connected' : 'Not Connected'}</span>
+              <button
+                onClick={microsoftStatus.isConnected ? signOutFromMicrosoft : signInToMicrosoft}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+              >
+                {microsoftStatus.isConnected ? 'Disconnect' : 'Connect with Microsoft'}
+              </button>
+            </div>
+          </div>
+
+          {/* OneDrive Files */}
+          {microsoftStatus.isConnected && (
+            <div className="mt-6">
+              <h3 className="text-lg font-semibold mb-2">OneDrive Excel Files</h3>
+              <div className="border rounded-lg p-4">
+                {excelFiles.length > 0 ? (
+                  <ul className="space-y-2">
+                    {excelFiles.map((file: any) => (
+                      <li key={file.id} className="flex items-center justify-between">
+                        <span>{file.name}</span>
+                        <a
+                          href={file.webUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:text-blue-800"
+                        >
+                          Open in OneDrive
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-gray-500">No Excel files found in your OneDrive</p>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Avatar Upload */}
           <div className="flex items-center gap-4">
             <div className="relative">
@@ -592,78 +685,6 @@ export default function Home() {
       setProfileError(err instanceof Error ? err.message : 'Failed to upload avatar');
     } finally {
       setIsProfileLoading(false);
-    }
-  };
-
-  // Add handleCreateClient function
-  const handleCreateClient = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      // Calculate next update date
-      const today = new Date();
-      const nextUpdateDate = new Date(today);
-      if (newSubscription.frequency === 'monthly') {
-        nextUpdateDate.setMonth(nextUpdateDate.getMonth() + 1);
-      } else {
-        nextUpdateDate.setMonth(nextUpdateDate.getMonth() + 3);
-      }
-
-      const subscriptionData = {
-        ...newSubscription,
-        last_update: today.toISOString(),
-        next_update_due: nextUpdateDate.toISOString(),
-        update_status: 'pending' as const,
-        updated_by: user?.id || null,
-        hosting_details: hostingDetails.host ? {
-          host: hostingDetails.host,
-          username: hostingDetails.username,
-          password: hostingDetails.password,
-          port: hostingDetails.port
-        } : null,
-        database_details: databaseDetails.host ? {
-          host: databaseDetails.host,
-          databaseName: databaseDetails.databaseName,
-          databaseUser: databaseDetails.databaseUser,
-          password: databaseDetails.password
-        } : null
-      };
-
-      await createSubscription(subscriptionData);
-      await fetchSubscriptions();
-      setIsNewClientModalOpen(false);
-      
-      // Reset form
-      setNewSubscription({
-        client_name: '',
-        frequency: 'monthly',
-        wp_theme: '',
-        php_version: '',
-        ga4_status: 'no',
-        analytics_check: false,
-        last_update: null,
-        next_update_due: null,
-        hosting_details: null,
-        database_details: null
-      });
-      setHostingDetails({
-        host: '',
-        username: '',
-        password: '',
-        port: ''
-      });
-      setDatabaseDetails({
-        host: '',
-        databaseName: '',
-        databaseUser: '',
-        password: ''
-      });
-    } catch (err) {
-      console.error('Error creating client:', err);
-      setError(err instanceof Error ? err.message : 'Failed to create client');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -951,12 +972,6 @@ export default function Home() {
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-lg font-semibold">Alle Klanten</h2>
                 <div className="flex gap-4">
-                  <button
-                    onClick={() => setIsNewClientModalOpen(true)}
-                    className="glass-button px-4 py-2 rounded-lg"
-                  >
-                    Nieuwe Klant
-                  </button>
                   <input
                     type="text"
                     placeholder="Zoek klanten..."
@@ -984,6 +999,21 @@ export default function Home() {
                       className="glass-button px-4 py-2 rounded-lg disabled:opacity-50"
                     >
                       Uploaden
+                    </button>
+                  )}
+                  {showRevertButton && (
+                    <button
+                      onClick={handleRevertImport}
+                      disabled={loading || !previousSubscriptions}
+                      className="glass-button px-4 py-2 rounded-lg bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 disabled:opacity-50"
+                      title="Herstel naar vorige import"
+                    >
+                      <div className="flex items-center gap-2">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                        </svg>
+                        <span>Herstel Import</span>
+                      </div>
                     </button>
                   )}
                 </div>
@@ -1531,16 +1561,16 @@ export default function Home() {
                       {/* Monthly Progress */}
                       <div className="space-y-2">
                         <div className="flex justify-between items-center">
-                          <span className="text-sm text-gray-400">
+                          <span className="text-xs text-gray-400">
                             Maandelijks ({monthlyCompleted}/{monthlyRequired})
                           </span>
-                          <span className={`text-sm ${monthlyPercentage >= 70 ? 'text-green-500' : monthlyPercentage >= 30 ? 'text-yellow-500' : 'text-red-500'}`}>
+                          <span className={`text-xs ${monthlyPercentage >= 70 ? 'text-green-500' : monthlyPercentage >= 30 ? 'text-yellow-500' : 'text-red-500'}`}>
                             {monthlyPercentage}%
                           </span>
                         </div>
-                        <div className="w-full bg-gray-800 rounded-full h-2">
+                        <div className="w-full bg-gray-800 rounded-full h-1.5">
                           <div 
-                            className={`h-2 rounded-full transition-all duration-500 ${
+                            className={`h-1.5 rounded-full transition-all duration-500 ${
                               monthlyPercentage >= 70 ? 'bg-green-500' : 
                               monthlyPercentage >= 30 ? 'bg-yellow-500' : 
                               'bg-red-500'
@@ -1552,16 +1582,16 @@ export default function Home() {
                       {/* Quarterly Progress */}
                       <div className="space-y-2">
                         <div className="flex justify-between items-center">
-                          <span className="text-sm text-gray-400">
+                          <span className="text-xs text-gray-400">
                             Kwartaal ({quarterlyCompleted}/{quarterlyRequired})
                           </span>
-                          <span className={`text-sm ${quarterlyPercentage >= 70 ? 'text-green-500' : quarterlyPercentage >= 30 ? 'text-yellow-500' : 'text-red-500'}`}>
+                          <span className={`text-xs ${quarterlyPercentage >= 70 ? 'text-green-500' : quarterlyPercentage >= 30 ? 'text-yellow-500' : 'text-red-500'}`}>
                             {quarterlyPercentage}%
                           </span>
                         </div>
-                        <div className="w-full bg-gray-800 rounded-full h-2">
+                        <div className="w-full bg-gray-800 rounded-full h-1.5">
                           <div 
-                            className={`h-2 rounded-full transition-all duration-500 ${
+                            className={`h-1.5 rounded-full transition-all duration-500 ${
                               quarterlyPercentage >= 70 ? 'bg-green-500' : 
                               quarterlyPercentage >= 30 ? 'bg-yellow-500' : 
                               'bg-red-500'
@@ -1574,233 +1604,6 @@ export default function Home() {
                   );
                 })}
               </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Add New Client Modal */}
-      {isNewClientModalOpen && (
-        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="card p-6 w-full max-w-2xl">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-semibold">Nieuwe Klant Toevoegen</h2>
-              <button
-                onClick={() => setIsNewClientModalOpen(false)}
-                className="text-gray-400 hover:text-white"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="flex space-x-4 mb-4 border-b border-gray-600">
-              <button
-                type="button"
-                className={`px-4 py-2 ${
-                  activeTab === "general" 
-                    ? "border-b-2 border-blue-500 text-blue-500" 
-                    : "text-gray-400"
-                }`}
-                onClick={() => setActiveTab("general")}
-              >
-                General
-              </button>
-              <button
-                type="button"
-                className={`px-4 py-2 ${
-                  activeTab === "hosting" 
-                    ? "border-b-2 border-blue-500 text-blue-500" 
-                    : "text-gray-400"
-                }`}
-                onClick={() => setActiveTab("hosting")}
-              >
-                Hosting Gegevens
-              </button>
-              <button
-                type="button"
-                className={`px-4 py-2 ${
-                  activeTab === "database" 
-                    ? "border-b-2 border-blue-500 text-blue-500" 
-                    : "text-gray-400"
-                }`}
-                onClick={() => setActiveTab("database")}
-              >
-                Database
-              </button>
-            </div>
-
-            {activeTab === "general" && (
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">Klantnaam</label>
-                  <input
-                    type="text"
-                    value={newSubscription.client_name}
-                    onChange={(e) => setNewSubscription({
-                      ...newSubscription,
-                      client_name: e.target.value
-                    })}
-                    className="glass-input w-full px-4 py-2 rounded-lg"
-                    required
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">Frequentie</label>
-                  <select
-                    value={newSubscription.frequency}
-                    onChange={(e) => setNewSubscription({
-                      ...newSubscription,
-                      frequency: e.target.value as 'monthly' | 'quarterly'
-                    })}
-                    className="glass-input w-full px-4 py-2 rounded-lg"
-                  >
-                    <option value="monthly">Maandelijks</option>
-                    <option value="quarterly">Per kwartaal</option>
-                  </select>
-                </div>
-                
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">WordPress Thema</label>
-                  <input
-                    type="text"
-                    value={newSubscription.wp_theme}
-                    onChange={(e) => setNewSubscription({
-                      ...newSubscription,
-                      wp_theme: e.target.value
-                    })}
-                    className="glass-input w-full px-4 py-2 rounded-lg"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">PHP Versie</label>
-                  <input
-                    type="text"
-                    value={newSubscription.php_version}
-                    onChange={(e) => setNewSubscription({
-                      ...newSubscription,
-                      php_version: e.target.value
-                    })}
-                    className="glass-input w-full px-4 py-2 rounded-lg"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">GA4 Status</label>
-                  <select
-                    value={newSubscription.ga4_status}
-                    onChange={(e) => setNewSubscription({
-                      ...newSubscription,
-                      ga4_status: e.target.value as 'yes' | 'no' | 'pending'
-                    })}
-                    className="glass-input w-full px-4 py-2 rounded-lg"
-                  >
-                    <option value="yes">Ja</option>
-                    <option value="pending">In behandeling</option>
-                    <option value="no">Nee</option>
-                  </select>
-                </div>
-              </div>
-            )}
-
-            {activeTab === "hosting" && (
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">Host</label>
-                  <input
-                    type="text"
-                    value={hostingDetails.host}
-                    onChange={(e) => setHostingDetails(prev => ({ ...prev, host: e.target.value }))}
-                    className="glass-input w-full px-4 py-2 rounded-lg"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">Gebruikersnaam</label>
-                  <input
-                    type="text"
-                    value={hostingDetails.username}
-                    onChange={(e) => setHostingDetails(prev => ({ ...prev, username: e.target.value }))}
-                    className="glass-input w-full px-4 py-2 rounded-lg"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">Wachtwoord</label>
-                  <input
-                    type="password"
-                    value={hostingDetails.password}
-                    onChange={(e) => setHostingDetails(prev => ({ ...prev, password: e.target.value }))}
-                    className="glass-input w-full px-4 py-2 rounded-lg"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">Poort</label>
-                  <input
-                    type="text"
-                    value={hostingDetails.port}
-                    onChange={(e) => setHostingDetails(prev => ({ ...prev, port: e.target.value }))}
-                    className="glass-input w-full px-4 py-2 rounded-lg"
-                  />
-                </div>
-              </div>
-            )}
-
-            {activeTab === "database" && (
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">Host</label>
-                  <input
-                    type="text"
-                    value={databaseDetails.host}
-                    onChange={(e) => setDatabaseDetails(prev => ({ ...prev, host: e.target.value }))}
-                    className="glass-input w-full px-4 py-2 rounded-lg"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">Database Name</label>
-                  <input
-                    type="text"
-                    value={databaseDetails.databaseName}
-                    onChange={(e) => setDatabaseDetails(prev => ({ ...prev, databaseName: e.target.value }))}
-                    className="glass-input w-full px-4 py-2 rounded-lg"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">Database User</label>
-                  <input
-                    type="text"
-                    value={databaseDetails.databaseUser}
-                    onChange={(e) => setDatabaseDetails(prev => ({ ...prev, databaseUser: e.target.value }))}
-                    className="glass-input w-full px-4 py-2 rounded-lg"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">Password</label>
-                  <input
-                    type="password"
-                    value={databaseDetails.password}
-                    onChange={(e) => setDatabaseDetails(prev => ({ ...prev, password: e.target.value }))}
-                    className="glass-input w-full px-4 py-2 rounded-lg"
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* Buttons */}
-            <div className="flex justify-end gap-4 mt-6">
-              <button
-                onClick={() => setIsNewClientModalOpen(false)}
-                className="glass-button px-4 py-2 rounded-lg"
-              >
-                Annuleren
-              </button>
-              <button
-                onClick={handleCreateClient}
-                disabled={loading || !newSubscription.client_name}
-                className="glass-button px-4 py-2 rounded-lg disabled:opacity-50"
-              >
-                Klant Toevoegen
-              </button>
             </div>
           </div>
         </div>

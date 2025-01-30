@@ -100,10 +100,31 @@ function normalizeBoolean(value: any): boolean {
   return false;
 }
 
+async function retryOperation<T>(
+  operation: () => Promise<T>,
+  maxRetries: number = 3,
+  delay: number = 1000
+): Promise<T> {
+  let lastError;
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (i < maxRetries - 1) {
+        await new Promise(resolve => setTimeout(resolve, delay * Math.pow(2, i)));
+      }
+    }
+  }
+  throw lastError;
+}
+
 export async function importExcelToSupabase(data: any[]): Promise<void> {
-  const { error } = await supabase
-    .from('subscriptions')
-    .insert(data.map(row => ({
+  // Process and deduplicate data
+  const processedDataMap = new Map();
+  
+  data.forEach(row => {
+    const record = {
       client_name: row[0]?.trim() || 'Unknown Client',
       frequency: normalizeFrequency(row[1]),
       wp_theme: row[2]?.trim() || null,
@@ -123,9 +144,42 @@ export async function importExcelToSupabase(data: any[]): Promise<void> {
       november: normalizeBoolean(row[16]),
       december: normalizeBoolean(row[17]),
       notes: row[18]?.toString().trim() || null
-    })));
+    };
+    
+    // Use lowercase client name as key to ensure case-insensitive deduplication
+    const key = record.client_name.toLowerCase();
+    processedDataMap.set(key, record);
+  });
 
-  if (error) throw error;
+  // Convert map back to array
+  const processedData = Array.from(processedDataMap.values());
+
+  // Process in smaller batches
+  const BATCH_SIZE = 25;
+  
+  for (let i = 0; i < processedData.length; i += BATCH_SIZE) {
+    const batch = processedData.slice(i, i + BATCH_SIZE);
+    
+    await retryOperation(async () => {
+      const { error } = await supabase
+        .from('subscriptions')
+        .upsert(
+          batch,
+          {
+            onConflict: 'client_name',
+            ignoreDuplicates: false
+          }
+        );
+
+      if (error) {
+        console.error('Batch error:', error);
+        throw error;
+      }
+    });
+
+    // Add a small delay between batches to prevent rate limiting
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
 }
 
 export async function getSubscriptions() {

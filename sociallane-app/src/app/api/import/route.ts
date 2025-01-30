@@ -1,36 +1,30 @@
 import { NextResponse } from 'next/server';
-import { readExcelFile } from '@/utils/excel';
 import { importExcelToSupabase } from '@/utils/supabase';
+import { getExcelFileContent } from '@/utils/onedrive';
 
 export async function POST(request: Request) {
   try {
-    const formData = await request.formData();
-    const file = formData.get('file') as File;
+    const { filePath } = await request.json();
     
-    if (!file) {
+    if (!filePath) {
       return NextResponse.json(
-        { error: 'No file provided' },
+        { error: 'No file path provided' },
         { status: 400 }
       );
     }
 
-    // Convert File to Buffer
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const filePath = '/tmp/temp.xlsx'; // Temporary file path
-    await require('fs').promises.writeFile(filePath, buffer);
-
-    // Read Excel file
-    const excelData = await readExcelFile(filePath);
+    // Get Excel data from OneDrive
+    const excelData = await getExcelFileContent(filePath);
+    
+    // Remove header row
+    const rows = excelData.slice(1);
     
     // Import data to Supabase
-    await importExcelToSupabase(excelData.rows);
+    await importExcelToSupabase(rows);
     
-    // Clean up temporary file
-    await require('fs').promises.unlink(filePath);
-
     return NextResponse.json({ 
       message: 'Import successful',
-      rowsImported: excelData.rows.length 
+      rowsImported: rows.length 
     });
   } catch (error) {
     console.error('Import error:', error);
