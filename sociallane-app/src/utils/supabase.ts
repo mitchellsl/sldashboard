@@ -100,64 +100,86 @@ function normalizeBoolean(value: any): boolean {
   return false;
 }
 
-export async function importExcelToSupabase(data: any[]): Promise<{ success: number; skipped: number; error: number }> {
-  let successCount = 0;
-  let skippedCount = 0;
-  let errorCount = 0;
-
-  for (const row of data) {
+async function retryOperation<T>(
+  operation: () => Promise<T>,
+  maxRetries: number = 3,
+  delay: number = 1000
+): Promise<T> {
+  let lastError;
+  for (let i = 0; i < maxRetries; i++) {
     try {
-      const clientName = row[0]?.trim() || 'Unknown Client';
-      
-      // Check for existing subscription
-      const { data: existingData, error: checkError } = await supabase
-        .from('subscriptions')
-        .select('id')
-        .ilike('client_name', clientName)
-        .maybeSingle();
-
-      if (checkError) {
-        console.error('Error checking for existing subscription:', checkError);
-        errorCount++;
-        continue;
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (i < maxRetries - 1) {
+        await new Promise(resolve => setTimeout(resolve, delay * Math.pow(2, i)));
       }
-
-      if (existingData) {
-        console.log(`Skipping duplicate client: ${clientName}`);
-        skippedCount++;
-        continue;
-      }
-
-      // Add new subscription
-      const { error: insertError } = await supabase
-        .from('subscriptions')
-        .insert([{
-          client_name: clientName,
-          frequency: normalizeFrequency(row[1]),
-          wp_theme: row[2]?.trim() || null,
-          php_version: row[3]?.toString().trim() || null,
-          ga4_status: normalizeGA4Status(row[4]),
-          analytics_check: normalizeBoolean(row[5]),
-          comments: row[18]?.toString().trim() || null
-        }]);
-
-      if (insertError) {
-        console.error('Error importing subscription:', insertError);
-        if (insertError.code === '23505') {
-          skippedCount++;
-        } else {
-          errorCount++;
-        }
-      } else {
-        successCount++;
-      }
-    } catch (err) {
-      console.error('Error processing row:', err);
-      errorCount++;
     }
   }
+  throw lastError;
+}
 
-  return { success: successCount, skipped: skippedCount, error: errorCount };
+export async function importExcelToSupabase(data: any[]): Promise<void> {
+  // Process and deduplicate data
+  const processedDataMap = new Map();
+  
+  data.forEach(row => {
+    const record = {
+      client_name: row[0]?.trim() || 'Unknown Client',
+      frequency: normalizeFrequency(row[1]),
+      wp_theme: row[2]?.trim() || null,
+      php_version: row[3]?.toString().trim() || null,
+      ga4_status: normalizeGA4Status(row[4]),
+      analytics_check: normalizeBoolean(row[5]),
+      january: normalizeBoolean(row[6]),
+      february: normalizeBoolean(row[7]),
+      march: normalizeBoolean(row[8]),
+      april: normalizeBoolean(row[9]),
+      may: normalizeBoolean(row[10]),
+      june: normalizeBoolean(row[11]),
+      july: normalizeBoolean(row[12]),
+      august: normalizeBoolean(row[13]),
+      september: normalizeBoolean(row[14]),
+      october: normalizeBoolean(row[15]),
+      november: normalizeBoolean(row[16]),
+      december: normalizeBoolean(row[17]),
+      notes: row[18]?.toString().trim() || null
+    };
+    
+    // Use lowercase client name as key to ensure case-insensitive deduplication
+    const key = record.client_name.toLowerCase();
+    processedDataMap.set(key, record);
+  });
+
+  // Convert map back to array
+  const processedData = Array.from(processedDataMap.values());
+
+  // Process in smaller batches
+  const BATCH_SIZE = 25;
+  
+  for (let i = 0; i < processedData.length; i += BATCH_SIZE) {
+    const batch = processedData.slice(i, i + BATCH_SIZE);
+    
+    await retryOperation(async () => {
+      const { error } = await supabase
+        .from('subscriptions')
+        .upsert(
+          batch,
+          {
+            onConflict: 'client_name',
+            ignoreDuplicates: false
+          }
+        );
+
+      if (error) {
+        console.error('Batch error:', error);
+        throw error;
+      }
+    });
+
+    // Add a small delay between batches to prevent rate limiting
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
 }
 
 export async function getSubscriptions() {
@@ -286,4 +308,27 @@ export async function uploadAvatar(userId: string, file: File) {
     console.error(`Error uploading avatar: ${error}`);
     throw new Error('Failed to upload avatar. Please try again.');
   }
+}
+
+export async function createSubscription(subscription: Omit<Subscription, 'id'>) {
+  const { data, error } = await supabase
+    .from('subscriptions')
+    .insert([{
+      ...subscription,
+      hosting_details: subscription.hosting_details ? JSON.stringify(subscription.hosting_details) : null,
+      database_details: subscription.database_details ? JSON.stringify(subscription.database_details) : null,
+    }])
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Supabase create error:', error);
+    throw error;
+  }
+
+  if (!data) {
+    throw new Error('No data returned after creation');
+  }
+
+  return data;
 } 

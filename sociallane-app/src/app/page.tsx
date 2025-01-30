@@ -7,6 +7,8 @@ import { UserProfile, getUserProfile, updateUserProfile, uploadAvatar } from '@/
 import { User } from '@supabase/supabase-js';
 import { HostingDetails, DatabaseDetails } from "@/types/hosting";
 import { supabase } from '@/utils/supabase';
+import { signInToMicrosoft, signOutFromMicrosoft, getMicrosoftConnectionStatus, listExcelFiles } from '@/utils/onedrive';
+import { AccountInfo } from '@azure/msal-browser';
 
 type SortField = 'client_name' | 'frequency' | 'wp_theme' | 'php_version' | 'ga4_status';
 type SortDirection = 'asc' | 'desc';
@@ -18,6 +20,11 @@ type UpdateHistory = {
   frequency: 'monthly' | 'quarterly';
   update_status: 'completed' | 'pending' | 'overdue';
 };
+
+interface MicrosoftStatus {
+  isConnected: boolean;
+  account: AccountInfo | null;
+}
 
 export default function Home() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
@@ -79,11 +86,28 @@ export default function Home() {
   const [previousSubscriptions, setPreviousSubscriptions] = useState<Subscription[] | null>(null);
   const [showRevertButton, setShowRevertButton] = useState(false);
 
+  // Add new state for Microsoft connection status and Excel files
+  const [microsoftStatus, setMicrosoftStatus] = useState<MicrosoftStatus>({ isConnected: false, account: null });
+  const [excelFiles, setExcelFiles] = useState<Array<{ id: string; name: string; webUrl: string }>>([]);
+
   useEffect(() => {
     fetchSubscriptions();
     if (user) {
       fetchUserProfile();
     }
+    const checkMicrosoftStatus = async () => {
+      try {
+        const status = await getMicrosoftConnectionStatus();
+        setMicrosoftStatus(status);
+        if (status.isConnected) {
+          const files = await listExcelFiles();
+          setExcelFiles(files);
+        }
+      } catch (error) {
+        console.error('Error checking Microsoft status:', error);
+      }
+    };
+    checkMicrosoftStatus();
   }, [user]);
 
   // Add sort function
@@ -503,6 +527,49 @@ export default function Home() {
         )}
 
         <div className="space-y-6">
+          {/* Microsoft Connection Status */}
+          <div className="border-b border-gray-700 pb-6">
+            <h3 className="font-medium mb-4">Microsoft Connection</h3>
+            <div className="flex items-center gap-4">
+              <div className={`w-3 h-3 rounded-full ${microsoftStatus.isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+              <span>{microsoftStatus.isConnected ? 'Connected' : 'Not Connected'}</span>
+              <button
+                onClick={microsoftStatus.isConnected ? signOutFromMicrosoft : signInToMicrosoft}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+              >
+                {microsoftStatus.isConnected ? 'Disconnect' : 'Connect with Microsoft'}
+              </button>
+            </div>
+          </div>
+
+          {/* OneDrive Files */}
+          {microsoftStatus.isConnected && (
+            <div className="mt-6">
+              <h3 className="text-lg font-semibold mb-2">OneDrive Excel Files</h3>
+              <div className="border rounded-lg p-4">
+                {excelFiles.length > 0 ? (
+                  <ul className="space-y-2">
+                    {excelFiles.map((file: any) => (
+                      <li key={file.id} className="flex items-center justify-between">
+                        <span>{file.name}</span>
+                        <a
+                          href={file.webUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:text-blue-800"
+                        >
+                          Open in OneDrive
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-gray-500">No Excel files found in your OneDrive</p>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Avatar Upload */}
           <div className="flex items-center gap-4">
             <div className="relative">
