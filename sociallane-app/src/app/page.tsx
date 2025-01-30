@@ -86,22 +86,9 @@ export default function Home() {
     analytics_check: false,
     last_update: null,
     next_update_due: null,
-    comments: '',
-    hosting_details: {
-      host: '',
-      username: '',
-      password: '',
-      port: ''
-    },
-    database_details: {
-      host: '',
-      databaseName: '',
-      databaseUser: '',
-      password: ''
-    }
+    hosting_details: null,
+    database_details: null
   });
-
-  const [newClientActiveTab, setNewClientActiveTab] = useState("general");
 
   useEffect(() => {
     fetchSubscriptions();
@@ -608,26 +595,46 @@ export default function Home() {
     }
   };
 
-  // Add function to handle new client creation
+  // Add handleCreateClient function
   const handleCreateClient = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      // Calculate next update date if last_update is set
-      if (newSubscription.last_update) {
-        const nextUpdateDate = calculateNextUpdate({
-          ...newSubscription,
-          id: 'temp'
-        });
-        newSubscription.next_update_due = nextUpdateDate.toISOString();
+      // Calculate next update date
+      const today = new Date();
+      const nextUpdateDate = new Date(today);
+      if (newSubscription.frequency === 'monthly') {
+        nextUpdateDate.setMonth(nextUpdateDate.getMonth() + 1);
+      } else {
+        nextUpdateDate.setMonth(nextUpdateDate.getMonth() + 3);
       }
 
-      await createSubscription(newSubscription);
+      const subscriptionData = {
+        ...newSubscription,
+        last_update: today.toISOString(),
+        next_update_due: nextUpdateDate.toISOString(),
+        update_status: 'pending' as const,
+        updated_by: user?.id || null,
+        hosting_details: hostingDetails.host ? {
+          host: hostingDetails.host,
+          username: hostingDetails.username,
+          password: hostingDetails.password,
+          port: hostingDetails.port
+        } : null,
+        database_details: databaseDetails.host ? {
+          host: databaseDetails.host,
+          databaseName: databaseDetails.databaseName,
+          databaseUser: databaseDetails.databaseUser,
+          password: databaseDetails.password
+        } : null
+      };
+
+      await createSubscription(subscriptionData);
       await fetchSubscriptions();
       setIsNewClientModalOpen(false);
       
-      // Reset the form
+      // Reset form
       setNewSubscription({
         client_name: '',
         frequency: 'monthly',
@@ -637,19 +644,20 @@ export default function Home() {
         analytics_check: false,
         last_update: null,
         next_update_due: null,
-        comments: '',
-        hosting_details: {
-          host: '',
-          username: '',
-          password: '',
-          port: ''
-        },
-        database_details: {
-          host: '',
-          databaseName: '',
-          databaseUser: '',
-          password: ''
-        }
+        hosting_details: null,
+        database_details: null
+      });
+      setHostingDetails({
+        host: '',
+        username: '',
+        password: '',
+        port: ''
+      });
+      setDatabaseDetails({
+        host: '',
+        databaseName: '',
+        databaseUser: '',
+        password: ''
       });
     } catch (err) {
       console.error('Error creating client:', err);
@@ -657,27 +665,6 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  };
-
-  // Add handlers for updating details
-  const updateHostingDetails = (field: keyof HostingDetails, value: string) => {
-    setNewSubscription(prev => ({
-      ...prev,
-      hosting_details: {
-        ...prev.hosting_details!,
-        [field]: value
-      }
-    }));
-  };
-
-  const updateDatabaseDetails = (field: keyof DatabaseDetails, value: string) => {
-    setNewSubscription(prev => ({
-      ...prev,
-      database_details: {
-        ...prev.database_details!,
-        [field]: value
-      }
-    }));
   };
 
   if (loading) return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
@@ -960,10 +947,16 @@ export default function Home() {
           {/* Client Tables */}
           <div className="card p-6 lg:col-span-2">
             <div className="flex flex-col gap-8">
-              {/* Common Header with Search, Import, and New Client */}
+              {/* Common Header with Search and Import */}
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-lg font-semibold">Alle Klanten</h2>
                 <div className="flex gap-4">
+                  <button
+                    onClick={() => setIsNewClientModalOpen(true)}
+                    className="glass-button px-4 py-2 rounded-lg"
+                  >
+                    Nieuwe Klant
+                  </button>
                   <input
                     type="text"
                     placeholder="Zoek klanten..."
@@ -971,12 +964,6 @@ export default function Home() {
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="glass-input px-4 py-2 rounded-lg"
                   />
-                  <button
-                    onClick={() => setIsNewClientModalOpen(true)}
-                    className="glass-button px-4 py-2 rounded-lg"
-                  >
-                    Nieuwe Klant
-                  </button>
                   <input
                     type="file"
                     accept=".xlsx,.xls"
@@ -1592,7 +1579,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* New Client Modal */}
+      {/* Add New Client Modal */}
       {isNewClientModalOpen && (
         <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50">
           <div className="card p-6 w-full max-w-2xl">
@@ -1610,46 +1597,49 @@ export default function Home() {
               <button
                 type="button"
                 className={`px-4 py-2 ${
-                  newClientActiveTab === "general" 
+                  activeTab === "general" 
                     ? "border-b-2 border-blue-500 text-blue-500" 
                     : "text-gray-400"
                 }`}
-                onClick={() => setNewClientActiveTab("general")}
+                onClick={() => setActiveTab("general")}
               >
-                Algemeen
+                General
               </button>
               <button
                 type="button"
                 className={`px-4 py-2 ${
-                  newClientActiveTab === "hosting" 
+                  activeTab === "hosting" 
                     ? "border-b-2 border-blue-500 text-blue-500" 
                     : "text-gray-400"
                 }`}
-                onClick={() => setNewClientActiveTab("hosting")}
+                onClick={() => setActiveTab("hosting")}
               >
                 Hosting Gegevens
               </button>
               <button
                 type="button"
                 className={`px-4 py-2 ${
-                  newClientActiveTab === "database" 
+                  activeTab === "database" 
                     ? "border-b-2 border-blue-500 text-blue-500" 
                     : "text-gray-400"
                 }`}
-                onClick={() => setNewClientActiveTab("database")}
+                onClick={() => setActiveTab("database")}
               >
                 Database
               </button>
             </div>
 
-            {newClientActiveTab === "general" && (
+            {activeTab === "general" && (
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm text-gray-400 mb-1">Klantnaam</label>
                   <input
                     type="text"
                     value={newSubscription.client_name}
-                    onChange={(e) => setNewSubscription(prev => ({ ...prev, client_name: e.target.value }))}
+                    onChange={(e) => setNewSubscription({
+                      ...newSubscription,
+                      client_name: e.target.value
+                    })}
                     className="glass-input w-full px-4 py-2 rounded-lg"
                     required
                   />
@@ -1659,7 +1649,10 @@ export default function Home() {
                   <label className="block text-sm text-gray-400 mb-1">Frequentie</label>
                   <select
                     value={newSubscription.frequency}
-                    onChange={(e) => setNewSubscription(prev => ({ ...prev, frequency: e.target.value as 'monthly' | 'quarterly' }))}
+                    onChange={(e) => setNewSubscription({
+                      ...newSubscription,
+                      frequency: e.target.value as 'monthly' | 'quarterly'
+                    })}
                     className="glass-input w-full px-4 py-2 rounded-lg"
                   >
                     <option value="monthly">Maandelijks</option>
@@ -1672,7 +1665,10 @@ export default function Home() {
                   <input
                     type="text"
                     value={newSubscription.wp_theme}
-                    onChange={(e) => setNewSubscription(prev => ({ ...prev, wp_theme: e.target.value }))}
+                    onChange={(e) => setNewSubscription({
+                      ...newSubscription,
+                      wp_theme: e.target.value
+                    })}
                     className="glass-input w-full px-4 py-2 rounded-lg"
                   />
                 </div>
@@ -1682,7 +1678,10 @@ export default function Home() {
                   <input
                     type="text"
                     value={newSubscription.php_version}
-                    onChange={(e) => setNewSubscription(prev => ({ ...prev, php_version: e.target.value }))}
+                    onChange={(e) => setNewSubscription({
+                      ...newSubscription,
+                      php_version: e.target.value
+                    })}
                     className="glass-input w-full px-4 py-2 rounded-lg"
                   />
                 </div>
@@ -1691,7 +1690,10 @@ export default function Home() {
                   <label className="block text-sm text-gray-400 mb-1">GA4 Status</label>
                   <select
                     value={newSubscription.ga4_status}
-                    onChange={(e) => setNewSubscription(prev => ({ ...prev, ga4_status: e.target.value as 'yes' | 'no' | 'pending' }))}
+                    onChange={(e) => setNewSubscription({
+                      ...newSubscription,
+                      ga4_status: e.target.value as 'yes' | 'no' | 'pending'
+                    })}
                     className="glass-input w-full px-4 py-2 rounded-lg"
                   >
                     <option value="yes">Ja</option>
@@ -1699,52 +1701,17 @@ export default function Home() {
                     <option value="no">Nee</option>
                   </select>
                 </div>
-                
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">Analytics Check</label>
-                  <select
-                    value={newSubscription.analytics_check ? 'true' : 'false'}
-                    onChange={(e) => setNewSubscription(prev => ({ ...prev, analytics_check: e.target.value === 'true' }))}
-                    className="glass-input w-full px-4 py-2 rounded-lg"
-                  >
-                    <option value="true">Ja</option>
-                    <option value="false">Nee</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">Laatste Update</label>
-                  <input
-                    type="date"
-                    value={newSubscription.last_update ? new Date(newSubscription.last_update).toISOString().split('T')[0] : ''}
-                    onChange={(e) => setNewSubscription(prev => ({
-                      ...prev,
-                      last_update: e.target.value ? new Date(e.target.value).toISOString() : null
-                    }))}
-                    className="glass-input w-full px-4 py-2 rounded-lg"
-                  />
-                </div>
-
-                <div className="col-span-2">
-                  <label className="block text-sm text-gray-400 mb-1">Opmerkingen</label>
-                  <textarea
-                    value={newSubscription.comments}
-                    onChange={(e) => setNewSubscription(prev => ({ ...prev, comments: e.target.value }))}
-                    className="glass-input w-full px-4 py-2 rounded-lg min-h-[100px] resize-y"
-                    placeholder="Voeg hier je opmerkingen toe..."
-                  />
-                </div>
               </div>
             )}
 
-            {newClientActiveTab === "hosting" && (
+            {activeTab === "hosting" && (
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm text-gray-400 mb-1">Host</label>
                   <input
                     type="text"
-                    value={newSubscription.hosting_details?.host || ''}
-                    onChange={(e) => updateHostingDetails('host', e.target.value)}
+                    value={hostingDetails.host}
+                    onChange={(e) => setHostingDetails(prev => ({ ...prev, host: e.target.value }))}
                     className="glass-input w-full px-4 py-2 rounded-lg"
                   />
                 </div>
@@ -1752,8 +1719,8 @@ export default function Home() {
                   <label className="block text-sm text-gray-400 mb-1">Gebruikersnaam</label>
                   <input
                     type="text"
-                    value={newSubscription.hosting_details?.username || ''}
-                    onChange={(e) => updateHostingDetails('username', e.target.value)}
+                    value={hostingDetails.username}
+                    onChange={(e) => setHostingDetails(prev => ({ ...prev, username: e.target.value }))}
                     className="glass-input w-full px-4 py-2 rounded-lg"
                   />
                 </div>
@@ -1761,8 +1728,8 @@ export default function Home() {
                   <label className="block text-sm text-gray-400 mb-1">Wachtwoord</label>
                   <input
                     type="password"
-                    value={newSubscription.hosting_details?.password || ''}
-                    onChange={(e) => updateHostingDetails('password', e.target.value)}
+                    value={hostingDetails.password}
+                    onChange={(e) => setHostingDetails(prev => ({ ...prev, password: e.target.value }))}
                     className="glass-input w-full px-4 py-2 rounded-lg"
                   />
                 </div>
@@ -1770,22 +1737,22 @@ export default function Home() {
                   <label className="block text-sm text-gray-400 mb-1">Poort</label>
                   <input
                     type="text"
-                    value={newSubscription.hosting_details?.port || ''}
-                    onChange={(e) => updateHostingDetails('port', e.target.value)}
+                    value={hostingDetails.port}
+                    onChange={(e) => setHostingDetails(prev => ({ ...prev, port: e.target.value }))}
                     className="glass-input w-full px-4 py-2 rounded-lg"
                   />
                 </div>
               </div>
             )}
 
-            {newClientActiveTab === "database" && (
+            {activeTab === "database" && (
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm text-gray-400 mb-1">Host</label>
                   <input
                     type="text"
-                    value={newSubscription.database_details?.host || ''}
-                    onChange={(e) => updateDatabaseDetails('host', e.target.value)}
+                    value={databaseDetails.host}
+                    onChange={(e) => setDatabaseDetails(prev => ({ ...prev, host: e.target.value }))}
                     className="glass-input w-full px-4 py-2 rounded-lg"
                   />
                 </div>
@@ -1793,8 +1760,8 @@ export default function Home() {
                   <label className="block text-sm text-gray-400 mb-1">Database Name</label>
                   <input
                     type="text"
-                    value={newSubscription.database_details?.databaseName || ''}
-                    onChange={(e) => updateDatabaseDetails('databaseName', e.target.value)}
+                    value={databaseDetails.databaseName}
+                    onChange={(e) => setDatabaseDetails(prev => ({ ...prev, databaseName: e.target.value }))}
                     className="glass-input w-full px-4 py-2 rounded-lg"
                   />
                 </div>
@@ -1802,8 +1769,8 @@ export default function Home() {
                   <label className="block text-sm text-gray-400 mb-1">Database User</label>
                   <input
                     type="text"
-                    value={newSubscription.database_details?.databaseUser || ''}
-                    onChange={(e) => updateDatabaseDetails('databaseUser', e.target.value)}
+                    value={databaseDetails.databaseUser}
+                    onChange={(e) => setDatabaseDetails(prev => ({ ...prev, databaseUser: e.target.value }))}
                     className="glass-input w-full px-4 py-2 rounded-lg"
                   />
                 </div>
@@ -1811,8 +1778,8 @@ export default function Home() {
                   <label className="block text-sm text-gray-400 mb-1">Password</label>
                   <input
                     type="password"
-                    value={newSubscription.database_details?.password || ''}
-                    onChange={(e) => updateDatabaseDetails('password', e.target.value)}
+                    value={databaseDetails.password}
+                    onChange={(e) => setDatabaseDetails(prev => ({ ...prev, password: e.target.value }))}
                     className="glass-input w-full px-4 py-2 rounded-lg"
                   />
                 </div>

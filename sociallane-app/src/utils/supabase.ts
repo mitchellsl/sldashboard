@@ -256,7 +256,7 @@ export async function uploadAvatar(userId: string, file: File) {
   }
 }
 
-export async function createSubscription(subscription: Omit<Subscription, 'id'>): Promise<Subscription> {
+export async function createSubscription(subscription: Omit<Subscription, 'id'>) {
   const { data, error } = await supabase
     .from('subscriptions')
     .insert([{
@@ -268,7 +268,7 @@ export async function createSubscription(subscription: Omit<Subscription, 'id'>)
     .single();
 
   if (error) {
-    console.error('Error creating subscription:', error);
+    console.error('Supabase create error:', error);
     throw error;
   }
 
