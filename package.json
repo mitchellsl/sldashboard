@@ -1,0 +1,10 @@
+{
+  "dependencies": {
+    "@azure/msal-browser": "^4.0.2",
+    "@azure/msal-common": "^15.0.2",
+    "@microsoft/microsoft-graph-client": "^3.0.7",
+    "@microsoft/microsoft-graph-types": "^2.40.0",
+    "@types/isomorphic-fetch": "^0.0.39",
+    "isomorphic-fetch": "^3.0.0"
+  }
+}

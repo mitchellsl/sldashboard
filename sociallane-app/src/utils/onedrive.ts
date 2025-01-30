@@ -1,6 +1,6 @@
 'use client';
 
-import { PublicClientApplication, InteractionRequiredAuthError } from "@azure/msal-browser";
+import { PublicClientApplication, InteractionRequiredAuthError, AccountInfo } from "@azure/msal-browser";
 
 // Check if we're in the browser environment
 const isBrowser = typeof window !== 'undefined';
@@ -13,20 +13,26 @@ console.log('NEXT_PUBLIC_REDIRECT_URI:', process.env.NEXT_PUBLIC_REDIRECT_URI);
 console.log('Is Browser:', isBrowser);
 
 // Get environment variables with fallbacks
-const clientId = process.env.NEXT_PUBLIC_AZURE_CLIENT_ID || '020338b2-f9b8-4620-bf68-88b6bc6f1317';
-const tenantId = process.env.NEXT_PUBLIC_AZURE_TENANT_ID || 'common';
-// Use root path for authentication redirects
-const redirectUri = isBrowser ? window.location.origin : '';
-const postLogoutRedirectUri = redirectUri;
+const clientId = process.env.NEXT_PUBLIC_AZURE_CLIENT_ID;
+const tenantId = process.env.NEXT_PUBLIC_AZURE_TENANT_ID;
+const redirectUri = process.env.NEXT_PUBLIC_REDIRECT_URI;
+
+if (!clientId || !tenantId || !redirectUri) {
+  console.error('Missing required environment variables:', {
+    clientId,
+    tenantId,
+    redirectUri
+  });
+}
 
 // MSAL configuration
 const msalConfig = {
   auth: {
-    clientId,
+    clientId: clientId || '',
     authority: `https://login.microsoftonline.com/${tenantId}`,
     redirectUri,
-    postLogoutRedirectUri,
-    navigateToLoginRequestUrl: false // Set to false to avoid navigation issues
+    postLogoutRedirectUri: redirectUri,
+    navigateToLoginRequestUrl: false
   },
   cache: {
     cacheLocation: 'sessionStorage',
@@ -44,8 +50,7 @@ const msalConfig = {
 // Create loginRequest only when in browser environment
 const getLoginRequest = () => ({
   scopes: ["User.Read", "Files.Read.All", "Sites.Read.All"],
-  prompt: "select_account",
-  redirectUri // Use the same redirectUri consistently
+  prompt: "select_account"
 });
 
 // Initialize MSAL instance only in browser environment
@@ -53,30 +58,23 @@ const msalInstance = isBrowser ? new PublicClientApplication(msalConfig) : null;
 
 // Initialize MSAL if in browser
 if (isBrowser && msalInstance) {
-  msalInstance.initialize();
+  msalInstance.initialize().catch(console.error);
 }
+
+let isAuthenticating = false;
 
 export async function signInToMicrosoft() {
   if (!isBrowser || !msalInstance) {
     throw new Error('Microsoft authentication is only available in browser environment');
   }
 
-  try {
-    // Check for any existing interactions
-    if (msalInstance.getActiveAccount()) {
-      try {
-        // Clear the token cache
-        await msalInstance.clearCache();
-        // Get all accounts and remove them
-        const currentAccounts = msalInstance.getAllAccounts();
-        for (const account of currentAccounts) {
-          msalInstance.setActiveAccount(null);
-        }
-      } catch (clearError) {
-        console.warn('Error clearing previous session:', clearError);
-      }
-    }
+  if (isAuthenticating) {
+    console.log('Authentication already in progress');
+    return;
+  }
 
+  try {
+    isAuthenticating = true;
     const loginRequest = getLoginRequest();
     const accounts = msalInstance.getAllAccounts();
     
@@ -115,6 +113,8 @@ export async function signInToMicrosoft() {
   } catch (error) {
     console.error('Authentication error:', error);
     throw error;
+  } finally {
+    isAuthenticating = false;
   }
 }
 
@@ -124,9 +124,14 @@ export async function signOutFromMicrosoft() {
   }
 
   try {
-    await msalInstance.logoutPopup({
-      postLogoutRedirectUri: process.env.NEXT_PUBLIC_REDIRECT_URI,
-    });
+    const account = msalInstance.getActiveAccount();
+    if (account) {
+      await msalInstance.logoutPopup({
+        account,
+        postLogoutRedirectUri: redirectUri
+      });
+      await msalInstance.clearCache();
+    }
   } catch (error) {
     console.error('Logout error:', error);
     throw error;
