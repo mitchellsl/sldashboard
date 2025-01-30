@@ -7,7 +7,7 @@ import { UserProfile, getUserProfile, updateUserProfile, uploadAvatar } from '@/
 import { User } from '@supabase/supabase-js';
 import { HostingDetails, DatabaseDetails } from "@/types/hosting";
 import { supabase } from '@/utils/supabase';
-import { signInToMicrosoft, signOutFromMicrosoft, getMicrosoftConnectionStatus, listExcelFiles } from '@/utils/onedrive';
+import { signInToMicrosoft, signOutFromMicrosoft, getMicrosoftConnectionStatus, listExcelFiles, searchExcelFiles } from '@/utils/onedrive';
 import { AccountInfo } from '@azure/msal-browser';
 
 type SortField = 'client_name' | 'frequency' | 'wp_theme' | 'php_version' | 'ga4_status';
@@ -88,27 +88,68 @@ export default function Home() {
 
   // Add new state for Microsoft connection status and Excel files
   const [microsoftStatus, setMicrosoftStatus] = useState<MicrosoftStatus>({ isConnected: false, account: null });
-  const [excelFiles, setExcelFiles] = useState<Array<{ id: string; name: string; webUrl: string }>>([]);
+  const [oneDriveFiles, setOneDriveFiles] = useState<Array<{ id: string; name: string; path: string }>>([]);
+  const [fileSearchTerm, setFileSearchTerm] = useState('');
+  const [selectedOneDriveFile, setSelectedOneDriveFile] = useState<{ id: string; name: string; path: string } | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const [isFileSelectModalOpen, setIsFileSelectModalOpen] = useState(false);
 
   useEffect(() => {
     fetchSubscriptions();
     if (user) {
       fetchUserProfile();
+      checkMicrosoftStatus();
     }
-    const checkMicrosoftStatus = async () => {
-      try {
-        const status = await getMicrosoftConnectionStatus();
-        setMicrosoftStatus(status);
-        if (status.isConnected) {
-          const files = await listExcelFiles();
-          setExcelFiles(files);
-        }
-      } catch (error) {
-        console.error('Error checking Microsoft status:', error);
-      }
-    };
-    checkMicrosoftStatus();
   }, [user]);
+
+  // Move checkMicrosoftStatus outside useEffect and update it
+  const checkMicrosoftStatus = async () => {
+    try {
+      const status = await getMicrosoftConnectionStatus();
+      setMicrosoftStatus(status);
+      
+      // Only try to fetch files if already connected
+      if (status.isConnected) {
+        await fetchOneDriveFiles();
+      }
+    } catch (error) {
+      console.error('Error checking Microsoft status:', error);
+    }
+  };
+
+  // Add new function to handle OneDrive file fetching
+  const fetchOneDriveFiles = async () => {
+    try {
+      console.log('Fetching OneDrive files...');
+      const files = await listExcelFiles();
+      console.log('Found files:', files);
+      if (Array.isArray(files)) {
+        setOneDriveFiles(files);
+        console.log('Updated oneDriveFiles state:', files);
+      } else {
+        console.error('Files is not an array:', files);
+      }
+    } catch (error) {
+      console.error('Error fetching Excel files:', error);
+      // If we get an auth error, try to sign in
+      if (error instanceof Error && error.message.includes('sign in')) {
+        console.log('Authentication required, attempting to sign in...');
+        try {
+          await signInToMicrosoft();
+          console.log('Sign in successful, retrying file fetch...');
+          // After successful sign in, try fetching files again
+          const files = await listExcelFiles();
+          console.log('Found files after auth:', files);
+          if (Array.isArray(files)) {
+            setOneDriveFiles(files);
+            console.log('Updated oneDriveFiles state after auth:', files);
+          }
+        } catch (signInError) {
+          console.error('Error signing in to Microsoft:', signInError);
+        }
+      }
+    }
+  };
 
   // Add sort function
   const handleSort = (field: SortField) => {
@@ -547,9 +588,9 @@ export default function Home() {
             <div className="mt-6">
               <h3 className="text-lg font-semibold mb-2">OneDrive Excel Files</h3>
               <div className="border rounded-lg p-4">
-                {excelFiles.length > 0 ? (
+                {oneDriveFiles.length > 0 ? (
                   <ul className="space-y-2">
-                    {excelFiles.map((file: any) => (
+                    {oneDriveFiles.map((file: any) => (
                       <li key={file.id} className="flex items-center justify-between">
                         <span>{file.name}</span>
                         <a
@@ -685,6 +726,76 @@ export default function Home() {
       setProfileError(err instanceof Error ? err.message : 'Failed to upload avatar');
     } finally {
       setIsProfileLoading(false);
+    }
+  };
+
+  // Update the file search handler
+  const handleOneDriveFileSearch = async () => {
+    try {
+      setIsSearching(true);
+      if (!microsoftStatus.isConnected) {
+        console.log('Not connected to Microsoft, attempting to sign in...');
+        await signInToMicrosoft();
+        // Update the connection status after signing in
+        const newStatus = await getMicrosoftConnectionStatus();
+        console.log('New Microsoft status:', newStatus);
+        setMicrosoftStatus(newStatus);
+      }
+      console.log('Searching for files with term:', fileSearchTerm);
+      const files = await searchExcelFiles(fileSearchTerm);
+      console.log('Search results:', files);
+      if (Array.isArray(files)) {
+        setOneDriveFiles(files);
+        console.log('Updated oneDriveFiles state after search:', files);
+      }
+    } catch (error) {
+      console.error('Error searching files:', error);
+      setError(error instanceof Error ? error.message : 'Failed to search files');
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  // Update the file selection handler
+  const handleOneDriveFileSelect = async (file: { id: string; name: string; path: string }) => {
+    setSelectedOneDriveFile(file);
+    setIsFileSelectModalOpen(false);
+    
+    try {
+      setLoading(true);
+      if (!microsoftStatus.isConnected) {
+        await signInToMicrosoft();
+        // Update the connection status after signing in
+        const newStatus = await getMicrosoftConnectionStatus();
+        setMicrosoftStatus(newStatus);
+      }
+      const response = await fetch('/api/import', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ filePath: file.path }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Import failed');
+      }
+
+      const result = await response.json();
+      console.log('Import result:', result);
+      
+      // Refresh the subscriptions list
+      await fetchSubscriptions();
+      
+      // Show success message
+      setError(`Import successful: ${result.rowsImported} rows imported`);
+    } catch (error) {
+      console.error('Import error:', error);
+      setError(error instanceof Error ? error.message : 'Failed to import file');
+    } finally {
+      setLoading(false);
+      setSelectedOneDriveFile(null);
     }
   };
 
@@ -979,28 +1090,12 @@ export default function Home() {
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="glass-input px-4 py-2 rounded-lg"
                   />
-                  <input
-                    type="file"
-                    accept=".xlsx,.xls"
-                    onChange={handleFileUpload}
-                    className="hidden"
-                    id="file-upload"
-                  />
-                  <label
-                    htmlFor="file-upload"
-                    className="glass-button px-4 py-2 rounded-lg cursor-pointer"
+                  <button
+                    onClick={() => setIsFileSelectModalOpen(true)}
+                    className="glass-button px-4 py-2 rounded-lg"
                   >
                     Importeer Excel
-                  </label>
-                  {selectedFile && (
-                    <button
-                      onClick={handleImport}
-                      disabled={loading}
-                      className="glass-button px-4 py-2 rounded-lg disabled:opacity-50"
-                    >
-                      Uploaden
-                    </button>
-                  )}
+                  </button>
                   {showRevertButton && (
                     <button
                       onClick={handleRevertImport}
@@ -1604,6 +1699,141 @@ export default function Home() {
                   );
                 })}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* File Selection Modal */}
+      {isFileSelectModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-gray-900 rounded-lg p-6 w-full max-w-2xl">
+            <h2 className="text-lg font-semibold mb-4">Excel Bestand Importeren</h2>
+            
+            <div className="mb-4">
+              <p className="text-gray-400 mb-4">
+                Het aanbevolen bestand is "Update abonnementen DRIVE". Je kunt ook andere Excel bestanden zoeken.
+              </p>
+              <div className="flex gap-4">
+                <input
+                  type="text"
+                  placeholder="Zoek Excel bestanden..."
+                  value={fileSearchTerm}
+                  onChange={(e) => setFileSearchTerm(e.target.value)}
+                  className="glass-input px-4 py-2 rounded-lg flex-grow"
+                />
+                <button
+                  onClick={handleOneDriveFileSearch}
+                  disabled={isSearching}
+                  className="glass-button px-4 py-2 rounded-lg disabled:opacity-50"
+                >
+                  {isSearching ? 'Zoeken...' : 'Zoeken'}
+                </button>
+              </div>
+            </div>
+
+            <div className="max-h-96 overflow-y-auto mb-4">
+              <div className="mb-4 p-2 bg-gray-800 rounded">
+                <p className="text-sm text-gray-400">Debug Info:</p>
+                <p className="text-sm text-gray-400">Files loaded: {oneDriveFiles.length}</p>
+                <p className="text-sm text-gray-400">Connection status: {microsoftStatus.isConnected ? 'Connected' : 'Not Connected'}</p>
+                <button
+                  onClick={() => {
+                    console.log('Current oneDriveFiles:', oneDriveFiles);
+                    console.log('Current Microsoft status:', microsoftStatus);
+                  }}
+                  className="text-sm text-purple-400 hover:text-purple-300"
+                >
+                  Log Debug Info
+                </button>
+              </div>
+              
+              {oneDriveFiles.map((file) => {
+                const isRecommendedFile = file.name.toLowerCase() === 'update abonnementen drive.xlsx';
+                return (
+                  <div
+                    key={file.id}
+                    className={`p-3 hover:bg-gray-800 rounded-lg flex items-center justify-between gap-3 ${
+                      isRecommendedFile ? 'bg-purple-500/10 border border-purple-500/30' : ''
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <svg 
+                        className={`w-6 h-6 ${isRecommendedFile ? 'text-purple-500' : 'text-green-500'}`} 
+                        fill="none" 
+                        stroke="currentColor" 
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      <div className="flex flex-col">
+                        <span>{file.name}</span>
+                        {isRecommendedFile && (
+                          <span className="text-sm text-purple-400">Aanbevolen bestand</span>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        try {
+                          setLoading(true);
+                          const response = await fetch('/api/import', {
+                            method: 'POST',
+                            headers: {
+                              'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({ filePath: file.path }),
+                          });
+
+                          if (!response.ok) {
+                            const errorData = await response.json();
+                            throw new Error(errorData.error || 'Import failed');
+                          }
+
+                          const result = await response.json();
+                          console.log('Import result:', result);
+                          
+                          // Refresh the subscriptions list
+                          await fetchSubscriptions();
+                          setIsFileSelectModalOpen(false);
+                          
+                          // Show success message
+                          setError(`Import successful: ${result.rowsImported} rows imported`);
+                        } catch (error) {
+                          console.error('Import error:', error);
+                          setError(error instanceof Error ? error.message : 'Failed to import file');
+                        } finally {
+                          setLoading(false);
+                        }
+                      }}
+                      className="glass-button px-4 py-2 rounded-lg text-sm"
+                      disabled={loading}
+                    >
+                      {loading ? 'Importeren...' : 'Importeer'}
+                    </button>
+                  </div>
+                );
+              })}
+              {oneDriveFiles.length === 0 && (
+                <div className="text-center text-gray-400 py-4">
+                  Geen Excel bestanden gevonden. Probeer een andere zoekterm.
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-between gap-4">
+              <button
+                onClick={fetchOneDriveFiles}
+                className="glass-button px-4 py-2 rounded-lg"
+              >
+                Ververs Bestanden
+              </button>
+              <button
+                onClick={() => setIsFileSelectModalOpen(false)}
+                className="glass-button px-4 py-2 rounded-lg"
+              >
+                Annuleren
+              </button>
             </div>
           </div>
         </div>

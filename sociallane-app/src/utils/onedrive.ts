@@ -210,19 +210,47 @@ async function makeGraphRequest(accessToken: string, endpoint: string) {
   }
 }
 
+async function ensureAuthenticated() {
+  const authResult = await signInToMicrosoft();
+  if (!authResult?.accessToken) {
+    throw new Error('Failed to get access token. Please sign in to Microsoft first.');
+  }
+  return authResult.accessToken;
+}
+
 export async function listExcelFiles() {
   try {
-    const accessToken = await signInToMicrosoft();
-    const response = await makeGraphRequest(
-      accessToken.accessToken,
-      '/me/drive/root/search(q=\'.xlsx\')?$select=id,name,webUrl,parentReference&$orderby=name'
+    const accessToken = await ensureAuthenticated();
+    
+    // First try to find the recommended file directly
+    let response = await makeGraphRequest(
+      accessToken,
+      `/me/drive/root/search(q='Update abonnementen DRIVE')?$select=id,name,webUrl,parentReference`
     );
+
+    if (!response.value?.length) {
+      // If recommended file not found, search for all Excel files
+      response = await makeGraphRequest(
+        accessToken,
+        `/me/drive/root/search(q='*.xlsx OR *.xls')?$select=id,name,webUrl,parentReference&$orderby=name`
+      );
+    }
 
     if (!response.value || !Array.isArray(response.value)) {
       throw new Error('Invalid response format from OneDrive');
     }
 
-    return response.value.map((file: any) => ({
+    // Sort files to prioritize "Update abonnementen DRIVE.xlsx"
+    const files = response.value.sort((a: any, b: any) => {
+      const isTargetFileA = a.name.toLowerCase() === 'update abonnementen drive.xlsx';
+      const isTargetFileB = b.name.toLowerCase() === 'update abonnementen drive.xlsx';
+      
+      if (isTargetFileA && !isTargetFileB) return -1;
+      if (!isTargetFileA && isTargetFileB) return 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    return files.map((file: any) => ({
       id: file.id,
       name: file.name,
       path: file.name,
@@ -230,25 +258,128 @@ export async function listExcelFiles() {
     }));
   } catch (error: any) {
     console.error('Error listing Excel files:', error);
-    throw new Error(error.message || 'Failed to list Excel files');
+    throw error;
+  }
+}
+
+export async function searchExcelFiles(searchTerm: string) {
+  try {
+    const accessToken = await ensureAuthenticated();
+
+    const query = searchTerm ? 
+      `/me/drive/root/search(q='${searchTerm} (*.xlsx OR *.xls)')?$select=id,name,webUrl,parentReference&$orderby=name` :
+      `/me/drive/root/search(q='*.xlsx OR *.xls')?$select=id,name,webUrl,parentReference&$orderby=name`;
+
+    const response = await makeGraphRequest(
+      accessToken,
+      query
+    );
+
+    if (!response.value || !Array.isArray(response.value)) {
+      throw new Error('Invalid response format from OneDrive');
+    }
+
+    // Sort files to prioritize "Update abonnementen DRIVE.xlsx"
+    const files = response.value.sort((a: any, b: any) => {
+      const isTargetFileA = a.name.toLowerCase() === 'update abonnementen drive.xlsx';
+      const isTargetFileB = b.name.toLowerCase() === 'update abonnementen drive.xlsx';
+      
+      if (isTargetFileA && !isTargetFileB) return -1;
+      if (!isTargetFileA && isTargetFileB) return 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    // Filter to only include Excel files
+    return files
+      .filter((file: any) => file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.xls'))
+      .map((file: any) => ({
+        id: file.id,
+        name: file.name,
+        path: file.name,
+        webUrl: file.webUrl
+      }));
+  } catch (error: any) {
+    console.error('Error searching Excel files:', error);
+    throw error;
   }
 }
 
 export async function getExcelFileContent(filePath: string) {
   try {
-    const accessToken = await signInToMicrosoft();
+    const accessToken = await ensureAuthenticated();
+    
+    // First get the worksheet names
+    const worksheetsResponse = await makeGraphRequest(
+      accessToken,
+      `/me/drive/root:/${filePath}:/workbook/worksheets`
+    );
+
+    if (!worksheetsResponse.value || !Array.isArray(worksheetsResponse.value)) {
+      throw new Error('No worksheets found in Excel file');
+    }
+
+    // Get the first worksheet's name
+    const firstWorksheet = worksheetsResponse.value[0];
+    
+    // Get the used range of the first worksheet
     const response = await makeGraphRequest(
-      accessToken.accessToken,
-      `/me/drive/root:/${filePath}:/workbook/worksheets/Sheet1/usedRange`
+      accessToken,
+      `/me/drive/root:/${filePath}:/workbook/worksheets/${firstWorksheet.name}/usedRange`
     );
 
     if (!response.values) {
       throw new Error('No data found in Excel file');
     }
 
-    return response.values;
+    // Extract headers and data
+    const [headers, ...rows] = response.values;
+
+    // Map the data to match database columns
+    const mappedRows = rows.map((row: any[]) => {
+      const mappedRow: any = {};
+      headers.forEach((header: string, index: number) => {
+        // Normalize header to match database columns
+        const normalizedHeader = normalizeColumnName(header);
+        if (isValidDatabaseColumn(normalizedHeader)) {
+          mappedRow[normalizedHeader] = row[index];
+        }
+      });
+      return mappedRow;
+    });
+
+    return {
+      headers: headers.map((h: string) => normalizeColumnName(h)),
+      rows: mappedRows
+    };
   } catch (error: any) {
     console.error('Error getting Excel content:', error);
-    throw new Error(error.message || 'Failed to get Excel content');
+    throw error; // Preserve the original error for better handling
   }
+}
+
+// Helper function to normalize column names
+function normalizeColumnName(header: string): string {
+  return header
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]/g, '_') // Replace non-alphanumeric chars with underscore
+    .replace(/_+/g, '_') // Replace multiple underscores with single
+    .replace(/^_|_$/g, ''); // Remove leading/trailing underscores
+}
+
+// Helper function to check if column name is valid for database
+function isValidDatabaseColumn(columnName: string): boolean {
+  const validColumns = [
+    'client_name',
+    'frequency',
+    'wp_theme',
+    'php_version',
+    'ga4_status',
+    'analytics_check',
+    'last_update',
+    'next_update_due',
+    'comments',
+    'update_status'
+  ];
+  return validColumns.includes(columnName);
 } 
