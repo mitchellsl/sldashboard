@@ -254,4 +254,27 @@ export async function uploadAvatar(userId: string, file: File) {
     console.error(`Error uploading avatar: ${error}`);
     throw new Error('Failed to upload avatar. Please try again.');
   }
+}
+
+export async function createSubscription(subscription: Omit<Subscription, 'id'>): Promise<Subscription> {
+  const { data, error } = await supabase
+    .from('subscriptions')
+    .insert([{
+      ...subscription,
+      hosting_details: subscription.hosting_details ? JSON.stringify(subscription.hosting_details) : null,
+      database_details: subscription.database_details ? JSON.stringify(subscription.database_details) : null,
+    }])
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error creating subscription:', error);
+    throw error;
+  }
+
+  if (!data) {
+    throw new Error('No data returned after creation');
+  }
+
+  return data;
 } 

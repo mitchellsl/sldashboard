@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Subscription, getSubscriptions, updateSubscription, deleteSubscription } from '@/utils/supabase';
+import { Subscription, getSubscriptions, updateSubscription, deleteSubscription, createSubscription } from '@/utils/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserProfile, getUserProfile, updateUserProfile, uploadAvatar } from '@/utils/supabase';
 import { User } from '@supabase/supabase-js';
@@ -74,6 +74,34 @@ export default function Home() {
   // Add new state for updates modal
   const [isUpdatesModalOpen, setIsUpdatesModalOpen] = useState(false);
   const [selectedSubscriptionId, setSelectedSubscriptionId] = useState<string | null>(null);
+
+  // Add new state for new client modal
+  const [isNewClientModalOpen, setIsNewClientModalOpen] = useState(false);
+  const [newSubscription, setNewSubscription] = useState<Omit<Subscription, 'id'>>({
+    client_name: '',
+    frequency: 'monthly',
+    wp_theme: '',
+    php_version: '',
+    ga4_status: 'no',
+    analytics_check: false,
+    last_update: null,
+    next_update_due: null,
+    comments: '',
+    hosting_details: {
+      host: '',
+      username: '',
+      password: '',
+      port: ''
+    },
+    database_details: {
+      host: '',
+      databaseName: '',
+      databaseUser: '',
+      password: ''
+    }
+  });
+
+  const [newClientActiveTab, setNewClientActiveTab] = useState("general");
 
   useEffect(() => {
     fetchSubscriptions();
@@ -580,6 +608,78 @@ export default function Home() {
     }
   };
 
+  // Add function to handle new client creation
+  const handleCreateClient = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Calculate next update date if last_update is set
+      if (newSubscription.last_update) {
+        const nextUpdateDate = calculateNextUpdate({
+          ...newSubscription,
+          id: 'temp'
+        });
+        newSubscription.next_update_due = nextUpdateDate.toISOString();
+      }
+
+      await createSubscription(newSubscription);
+      await fetchSubscriptions();
+      setIsNewClientModalOpen(false);
+      
+      // Reset the form
+      setNewSubscription({
+        client_name: '',
+        frequency: 'monthly',
+        wp_theme: '',
+        php_version: '',
+        ga4_status: 'no',
+        analytics_check: false,
+        last_update: null,
+        next_update_due: null,
+        comments: '',
+        hosting_details: {
+          host: '',
+          username: '',
+          password: '',
+          port: ''
+        },
+        database_details: {
+          host: '',
+          databaseName: '',
+          databaseUser: '',
+          password: ''
+        }
+      });
+    } catch (err) {
+      console.error('Error creating client:', err);
+      setError(err instanceof Error ? err.message : 'Failed to create client');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Add handlers for updating details
+  const updateHostingDetails = (field: keyof HostingDetails, value: string) => {
+    setNewSubscription(prev => ({
+      ...prev,
+      hosting_details: {
+        ...prev.hosting_details!,
+        [field]: value
+      }
+    }));
+  };
+
+  const updateDatabaseDetails = (field: keyof DatabaseDetails, value: string) => {
+    setNewSubscription(prev => ({
+      ...prev,
+      database_details: {
+        ...prev.database_details!,
+        [field]: value
+      }
+    }));
+  };
+
   if (loading) return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
   if (error) return <div className="flex items-center justify-center min-h-screen text-red-500">Error: {error}</div>;
 
@@ -860,7 +960,7 @@ export default function Home() {
           {/* Client Tables */}
           <div className="card p-6 lg:col-span-2">
             <div className="flex flex-col gap-8">
-              {/* Common Header with Search and Import */}
+              {/* Common Header with Search, Import, and New Client */}
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-lg font-semibold">Alle Klanten</h2>
                 <div className="flex gap-4">
@@ -871,6 +971,12 @@ export default function Home() {
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="glass-input px-4 py-2 rounded-lg"
                   />
+                  <button
+                    onClick={() => setIsNewClientModalOpen(true)}
+                    className="glass-button px-4 py-2 rounded-lg"
+                  >
+                    Nieuwe Klant
+                  </button>
                   <input
                     type="file"
                     accept=".xlsx,.xls"
@@ -1481,6 +1587,253 @@ export default function Home() {
                   );
                 })}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* New Client Modal */}
+      {isNewClientModalOpen && (
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="card p-6 w-full max-w-2xl">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-semibold">Nieuwe Klant Toevoegen</h2>
+              <button
+                onClick={() => setIsNewClientModalOpen(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="flex space-x-4 mb-4 border-b border-gray-600">
+              <button
+                type="button"
+                className={`px-4 py-2 ${
+                  newClientActiveTab === "general" 
+                    ? "border-b-2 border-blue-500 text-blue-500" 
+                    : "text-gray-400"
+                }`}
+                onClick={() => setNewClientActiveTab("general")}
+              >
+                Algemeen
+              </button>
+              <button
+                type="button"
+                className={`px-4 py-2 ${
+                  newClientActiveTab === "hosting" 
+                    ? "border-b-2 border-blue-500 text-blue-500" 
+                    : "text-gray-400"
+                }`}
+                onClick={() => setNewClientActiveTab("hosting")}
+              >
+                Hosting Gegevens
+              </button>
+              <button
+                type="button"
+                className={`px-4 py-2 ${
+                  newClientActiveTab === "database" 
+                    ? "border-b-2 border-blue-500 text-blue-500" 
+                    : "text-gray-400"
+                }`}
+                onClick={() => setNewClientActiveTab("database")}
+              >
+                Database
+              </button>
+            </div>
+
+            {newClientActiveTab === "general" && (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Klantnaam</label>
+                  <input
+                    type="text"
+                    value={newSubscription.client_name}
+                    onChange={(e) => setNewSubscription(prev => ({ ...prev, client_name: e.target.value }))}
+                    className="glass-input w-full px-4 py-2 rounded-lg"
+                    required
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Frequentie</label>
+                  <select
+                    value={newSubscription.frequency}
+                    onChange={(e) => setNewSubscription(prev => ({ ...prev, frequency: e.target.value as 'monthly' | 'quarterly' }))}
+                    className="glass-input w-full px-4 py-2 rounded-lg"
+                  >
+                    <option value="monthly">Maandelijks</option>
+                    <option value="quarterly">Per kwartaal</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">WordPress Thema</label>
+                  <input
+                    type="text"
+                    value={newSubscription.wp_theme}
+                    onChange={(e) => setNewSubscription(prev => ({ ...prev, wp_theme: e.target.value }))}
+                    className="glass-input w-full px-4 py-2 rounded-lg"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">PHP Versie</label>
+                  <input
+                    type="text"
+                    value={newSubscription.php_version}
+                    onChange={(e) => setNewSubscription(prev => ({ ...prev, php_version: e.target.value }))}
+                    className="glass-input w-full px-4 py-2 rounded-lg"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">GA4 Status</label>
+                  <select
+                    value={newSubscription.ga4_status}
+                    onChange={(e) => setNewSubscription(prev => ({ ...prev, ga4_status: e.target.value as 'yes' | 'no' | 'pending' }))}
+                    className="glass-input w-full px-4 py-2 rounded-lg"
+                  >
+                    <option value="yes">Ja</option>
+                    <option value="pending">In behandeling</option>
+                    <option value="no">Nee</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Analytics Check</label>
+                  <select
+                    value={newSubscription.analytics_check ? 'true' : 'false'}
+                    onChange={(e) => setNewSubscription(prev => ({ ...prev, analytics_check: e.target.value === 'true' }))}
+                    className="glass-input w-full px-4 py-2 rounded-lg"
+                  >
+                    <option value="true">Ja</option>
+                    <option value="false">Nee</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Laatste Update</label>
+                  <input
+                    type="date"
+                    value={newSubscription.last_update ? new Date(newSubscription.last_update).toISOString().split('T')[0] : ''}
+                    onChange={(e) => setNewSubscription(prev => ({
+                      ...prev,
+                      last_update: e.target.value ? new Date(e.target.value).toISOString() : null
+                    }))}
+                    className="glass-input w-full px-4 py-2 rounded-lg"
+                  />
+                </div>
+
+                <div className="col-span-2">
+                  <label className="block text-sm text-gray-400 mb-1">Opmerkingen</label>
+                  <textarea
+                    value={newSubscription.comments}
+                    onChange={(e) => setNewSubscription(prev => ({ ...prev, comments: e.target.value }))}
+                    className="glass-input w-full px-4 py-2 rounded-lg min-h-[100px] resize-y"
+                    placeholder="Voeg hier je opmerkingen toe..."
+                  />
+                </div>
+              </div>
+            )}
+
+            {newClientActiveTab === "hosting" && (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Host</label>
+                  <input
+                    type="text"
+                    value={newSubscription.hosting_details?.host || ''}
+                    onChange={(e) => updateHostingDetails('host', e.target.value)}
+                    className="glass-input w-full px-4 py-2 rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Gebruikersnaam</label>
+                  <input
+                    type="text"
+                    value={newSubscription.hosting_details?.username || ''}
+                    onChange={(e) => updateHostingDetails('username', e.target.value)}
+                    className="glass-input w-full px-4 py-2 rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Wachtwoord</label>
+                  <input
+                    type="password"
+                    value={newSubscription.hosting_details?.password || ''}
+                    onChange={(e) => updateHostingDetails('password', e.target.value)}
+                    className="glass-input w-full px-4 py-2 rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Poort</label>
+                  <input
+                    type="text"
+                    value={newSubscription.hosting_details?.port || ''}
+                    onChange={(e) => updateHostingDetails('port', e.target.value)}
+                    className="glass-input w-full px-4 py-2 rounded-lg"
+                  />
+                </div>
+              </div>
+            )}
+
+            {newClientActiveTab === "database" && (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Host</label>
+                  <input
+                    type="text"
+                    value={newSubscription.database_details?.host || ''}
+                    onChange={(e) => updateDatabaseDetails('host', e.target.value)}
+                    className="glass-input w-full px-4 py-2 rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Database Name</label>
+                  <input
+                    type="text"
+                    value={newSubscription.database_details?.databaseName || ''}
+                    onChange={(e) => updateDatabaseDetails('databaseName', e.target.value)}
+                    className="glass-input w-full px-4 py-2 rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Database User</label>
+                  <input
+                    type="text"
+                    value={newSubscription.database_details?.databaseUser || ''}
+                    onChange={(e) => updateDatabaseDetails('databaseUser', e.target.value)}
+                    className="glass-input w-full px-4 py-2 rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Password</label>
+                  <input
+                    type="password"
+                    value={newSubscription.database_details?.password || ''}
+                    onChange={(e) => updateDatabaseDetails('password', e.target.value)}
+                    className="glass-input w-full px-4 py-2 rounded-lg"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Buttons */}
+            <div className="flex justify-end gap-4 mt-6">
+              <button
+                onClick={() => setIsNewClientModalOpen(false)}
+                className="glass-button px-4 py-2 rounded-lg"
+              >
+                Annuleren
+              </button>
+              <button
+                onClick={handleCreateClient}
+                disabled={loading || !newSubscription.client_name}
+                className="glass-button px-4 py-2 rounded-lg disabled:opacity-50"
+              >
+                Klant Toevoegen
+              </button>
             </div>
           </div>
         </div>
