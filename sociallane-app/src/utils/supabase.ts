@@ -50,13 +50,15 @@ export interface Subscription {
   comments?: string;
   comment_updated_at?: string;
   comment_updated_by?: string;
-  hosting_info?: {
+  update_status?: 'completed' | 'pending' | 'overdue';
+  updated_by?: string | null;
+  hosting_details?: {
     host: string;
     username: string;
     password: string;
     port: string;
   } | null;
-  database_info?: {
+  database_details?: {
     host: string;
     databaseName: string;
     databaseUser: string;
@@ -140,9 +142,16 @@ export async function updateSubscription(id: string, updates: Partial<Subscripti
   // Remove id from updates
   const { id: _, ...updateData } = updates;
 
+  // Convert hosting_details and database_details to JSONB if they exist
+  const processedUpdates = {
+    ...updateData,
+    hosting_details: updateData.hosting_details ? JSON.stringify(updateData.hosting_details) : null,
+    database_details: updateData.database_details ? JSON.stringify(updateData.database_details) : null,
+  };
+
   const { data, error } = await supabase
     .from('subscriptions')
-    .update(updateData)
+    .update(processedUpdates)
     .eq('id', id)
     .select()
     .single();

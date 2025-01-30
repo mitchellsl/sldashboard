@@ -66,6 +66,10 @@ export default function Home() {
     password: editingSubscription?.database_details?.password || "",
   });
 
+  // Add new state for updates modal
+  const [isUpdatesModalOpen, setIsUpdatesModalOpen] = useState(false);
+  const [selectedSubscriptionId, setSelectedSubscriptionId] = useState<string | null>(null);
+
   useEffect(() => {
     fetchSubscriptions();
     if (user) {
@@ -136,6 +140,43 @@ export default function Home() {
     });
   };
 
+  // Add function to get pending updates for selected month
+  const getPendingUpdates = () => {
+    return subscriptions.filter(subscription => {
+      const nextUpdate = subscription.next_update_due ? new Date(subscription.next_update_due) : null;
+      if (!nextUpdate) return false;
+      
+      // Only check if the update is due in the selected month
+      return nextUpdate.getMonth() === selectedMonth;
+    });
+  };
+
+  // Add function to mark update as completed
+  const markUpdateAsCompleted = async (subscriptionId: string) => {
+    const subscription = subscriptions.find(s => s.id === subscriptionId);
+    if (!subscription) return;
+
+    try {
+      const nextUpdateDate = calculateNextUpdate({
+        ...subscription,
+        last_update: new Date().toISOString()
+      });
+
+      const updates = {
+        ...subscription,
+        last_update: new Date().toISOString(),
+        next_update_due: nextUpdateDate.toISOString(),
+        update_status: 'completed' as const
+      };
+
+      await updateSubscription(subscriptionId, updates);
+      await fetchSubscriptions();
+    } catch (err) {
+      console.error('Error marking update as completed:', err);
+      setError(err instanceof Error ? err.message : 'Failed to mark update as completed');
+    }
+  };
+
   async function fetchSubscriptions() {
     try {
       const data = await getSubscriptions();
@@ -190,22 +231,28 @@ export default function Home() {
     try {
       setLoading(true);
       
+      const nextUpdateDate = calculateNextUpdate({
+        ...editingSubscription,
+        last_update: new Date().toISOString()
+      });
+
       // Create the update object
       const updates: Partial<Subscription> = {
         ...editingSubscription,
-        hosting_info: {
+        hosting_details: {
           host: hostingDetails.host,
           username: hostingDetails.username,
           password: hostingDetails.password,
           port: hostingDetails.port
         },
-        database_info: {
+        database_details: {
           host: databaseDetails.host,
           databaseName: databaseDetails.databaseName,
           databaseUser: databaseDetails.databaseUser,
           password: databaseDetails.password
         },
         last_update: new Date().toISOString(),
+        next_update_due: nextUpdateDate.toISOString(),
         updated_by: user?.id || null
       };
 
@@ -557,6 +604,20 @@ export default function Home() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Calendar Card */}
           <div className="card p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-semibold">Maand Selectie</h2>
+              <button
+                onClick={() => setIsUpdatesModalOpen(true)}
+                className="glass-button px-4 py-2 rounded-lg flex items-center gap-2"
+              >
+                <span>Bekijk Updates</span>
+                {getPendingUpdates().length > 0 && (
+                  <span className="bg-purple-500 text-white px-2 py-0.5 rounded-full text-xs">
+                    {getPendingUpdates().length}
+                  </span>
+                )}
+              </button>
+            </div>
             <div className="grid grid-cols-7 gap-2">
               {months.map((month, index) => (
                 <button
@@ -1097,6 +1158,56 @@ export default function Home() {
               >
                 Wijzigingen Opslaan
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Updates Modal */}
+      {isUpdatesModalOpen && (
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="card p-6 w-full max-w-2xl">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-semibold">
+                Updates voor {months[selectedMonth]}
+              </h2>
+              <button
+                onClick={() => setIsUpdatesModalOpen(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {getPendingUpdates().length === 0 ? (
+                <p className="text-gray-400">Geen updates nodig voor deze maand.</p>
+              ) : (
+                getPendingUpdates().map((subscription) => (
+                  <div
+                    key={subscription.id}
+                    className="flex items-center justify-between p-4 bg-gray-800 rounded-lg"
+                  >
+                    <div>
+                      <h3 className="font-semibold">{subscription.client_name}</h3>
+                      <p className="text-sm text-gray-400">
+                        Volgende update: {formatDate(subscription.next_update_due)}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        markUpdateAsCompleted(subscription.id);
+                        if (getPendingUpdates().length === 1) {
+                          setIsUpdatesModalOpen(false);
+                        }
+                      }}
+                      className="glass-button px-4 py-2 rounded-lg text-sm"
+                    >
+                      Markeer als Voltooid
+                    </button>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
